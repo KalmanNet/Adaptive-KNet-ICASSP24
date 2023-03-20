@@ -31,8 +31,24 @@ print("Current Time =", strTime)
 ### Parameter Setting ###
 #########################
 args = config.general_settings()
+args.use_cuda = True # use GPU or not
+if args.use_cuda:
+   if torch.cuda.is_available():
+      device = torch.device('cuda')
+      print("Using GPU")
+   else:
+      raise Exception("No GPU found, please set args.use_cuda = False")
+else:
+    device = torch.device('cpu')
+    print("Using CPU")
 
 ### dataset parameters ##################################################
+F = F.to(device)
+H = H.to(device)
+Q_structure = Q_structure.to(device)
+R_structure = R_structure.to(device)
+m1_0 = m1_0.to(device)
+
 args.N_E = 1000
 args.N_CV = 100
 args.N_T = 200
@@ -44,10 +60,10 @@ if args.randomInit_train or args.randomInit_cv or args.randomInit_test:
    # you can modify initial variance
    args.variance = 1
    args.distribution = 'normal' # 'uniform' or 'normal'
-   m2_0 = args.variance * torch.eye(m)
+   m2_0 = args.variance * torch.eye(m).to(device)
 else: 
    # deterministic initial condition
-   m2_0 = 0 * torch.eye(m) 
+   m2_0 = 0 * torch.eye(m).to(device)
 # sequence length
 args.T = 100
 args.T_test = 100
@@ -64,8 +80,6 @@ else:
    test_lengthMask = None
 
 ### training parameters ##################################################
-args.use_cuda = False # use GPU or not
-
 mixed_dataset = True # use mixed dataset or one-by-one
 if mixed_dataset:
    args.n_steps = 10 # switch dataset every *** steps
@@ -77,22 +91,12 @@ args.n_batch = 30
 args.lr = 1e-4
 args.wd = 1e-3
 
-if args.use_cuda:
-   if torch.cuda.is_available():
-      device = torch.device('cuda')
-      print("Using GPU")
-   else:
-      raise Exception("No GPU found, please set args.use_cuda = False")
-else:
-    device = torch.device('cpu')
-    print("Using CPU")
-
 ### True model ##################################################
 # SoW
-SoW = torch.tensor([[0,0,0,0], [0,0,1,1]]).float()
+SoW = torch.tensor([[0,0,0,0], [0,0,1,1]]).float().to(device)
 
 # noise
-r2 = torch.tensor([1, 1e-3]).float()
+r2 = torch.tensor([1, 1e-3]).float().to(device)
 vdB = -20 # ratio v=q2/r2
 v = 10**(vdB/10)
 q2 = torch.mul(v,r2)
@@ -108,7 +112,7 @@ for i in range(len(SoW)):
 
 ### paths ##################################################
 path_results = 'simulations/linear_canonical/results/'
-dataFolderName = 'data/Linear_canonical' + '/'
+dataFolderName = 'data/linear_canonical' + '/'
 dataFileName = ('2x2_rq020_T100.pt', '2x2_rq3050_T100.pt')
 
 ###################################

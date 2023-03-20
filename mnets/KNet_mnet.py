@@ -313,9 +313,9 @@ class KalmanNetNN(torch.nn.Module):
         self.out_Sigma = self.prior_Sigma.flatten().reshape(1,1, -1).repeat(self.seq_len_input,self.batch_size, 1)
         self.out_S = self.prior_S.flatten().reshape(1,1, -1).repeat(self.seq_len_input,self.batch_size, 1)
 
-        self.h_S = torch.zeros(self.seq_len_input,self.batch_size,self.n ** 2) # batch size expansion   
-        self.h_Sigma = torch.zeros(self.seq_len_input,self.batch_size,self.m ** 2) # batch size expansion
-        self.h_Q = torch.zeros(self.seq_len_input,self.batch_size,self.m ** 2) # batch size expansion
+        self.h_S = torch.zeros(self.seq_len_input,self.batch_size,self.n ** 2).to(self.device) # batch size expansion   
+        self.h_Sigma = torch.zeros(self.seq_len_input,self.batch_size,self.m ** 2).to(self.device) # batch size expansion
+        self.h_Q = torch.zeros(self.seq_len_input,self.batch_size,self.m ** 2).to(self.device) # batch size expansion
 
     #####################
     ### Split weights ###
