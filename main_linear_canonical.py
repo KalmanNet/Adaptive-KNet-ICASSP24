@@ -80,12 +80,12 @@ else:
    test_lengthMask = None
 
 ### training parameters ##################################################
-mixed_dataset = True # use mixed dataset or one-by-one
+mixed_dataset = False # use mixed dataset or one-by-one
 if mixed_dataset:
    args.n_steps = 10 # switch dataset every *** steps
-   n_turns = 500 # number of turns, each turn len(SoW) datasets are used 
+   n_turns = 20 # number of turns, each turn len(SoW) datasets are used 
 else:
-   args.n_steps = 2500 # for each dataset
+   args.n_steps = 500 # for each dataset
 
 args.n_batch = 30
 args.lr = 1e-4
@@ -93,15 +93,18 @@ args.wd = 1e-3
 
 ### True model ##################################################
 # SoW
-SoW = torch.tensor([[0,0,0,0], [0,0,1,1]]).float().to(device)
+SoW = torch.tensor([[0,0,1,10], [0,0,1,1], [0,0,1,0.1], [0,0,1,5], [0,0,1,0.5]]).float().to(device)
+SoW_train = 3 # first # datasets are used for training
 
 # noise
-r2 = torch.tensor([1, 1e-3]).float().to(device)
-vdB = -20 # ratio v=q2/r2
-v = 10**(vdB/10)
-q2 = torch.mul(v,r2)
-print("1/r2 [dB] and 1/q2 [dB] of dataset 1: ", 10 * torch.log10(1/r2[0]), 10 * torch.log10(1/q2[0]))
-print("1/r2 [dB] and 1/q2 [dB] of dataset 2: ", 10 * torch.log10(1/r2[1]), 10 * torch.log10(1/q2[1]))
+r2 = torch.tensor([1, 1, 1, 1, 1]).float().to(device)
+# vdB = -20 # ratio v=q2/r2
+# v = 10**(vdB/10)
+# q2 = torch.mul(v,r2)
+q2 = torch.tensor([10, 1, 0.1, 5, 0.5]).float().to(device)
+for i in range(len(SoW)):
+   print(f"SoW of dataset {i}: ", SoW[i])
+   print(f"1/r2 [dB] and 1/q2 [dB] of dataset  {i}: ", 10 * torch.log10(1/r2[i]), 10 * torch.log10(1/q2[i]))
 
 # model
 sys_model = []
@@ -113,14 +116,14 @@ for i in range(len(SoW)):
 ### paths ##################################################
 path_results = 'simulations/linear_canonical/results/'
 dataFolderName = 'data/linear_canonical' + '/'
-dataFileName = ('2x2_rq020_T100.pt', '2x2_rq3050_T100.pt')
+dataFileName = ('2x2_rq0-10_T100.pt', '2x2_rq00_T100.pt', '2x2_rq010_T100.pt', 'test1.pt', 'test2.pt')
 
 ###################################
 ### Data Loader (Generate Data) ###
 ###################################
-# print("Start Data Gen")
-# for i in range(len(SoW)):
-#    DataGen(args, sys_model[i], dataFolderName + dataFileName[i])
+print("Start Data Gen")
+for i in range(len(SoW)):
+   DataGen(args, sys_model[i], dataFolderName + dataFileName[i])
 print("Data Load")
 train_input_list = []
 train_target_list = []
@@ -205,6 +208,9 @@ KalmanNet_model = KalmanNetNN()
 weight_size = KalmanNet_model.NNBuild(sys_model[0], args)
 print("Number of parameters for KalmanNet:", weight_size)
 HyperNet_model = HyperNetwork(args, weight_size)
+weight_size_hnet = sum(p.numel() for p in HyperNet_model.parameters() if p.requires_grad)
+print("Number of parameters for HyperNet:", weight_size_hnet)
+print("Total number of parameters:", weight_size + weight_size_hnet)
 
 ## Set up pipeline
 hknet_pipeline = Pipeline_hknet(strTime, "pipelines", "hknet")
@@ -214,20 +220,20 @@ hknet_pipeline.setTrainingParams(args)
 ## Train Neural Networks
 if mixed_dataset:
    for turns in range(n_turns):
-      for i in range(len(SoW)):
+      for i in range(SoW_train):
          if args.randomLength:
             hknet_pipeline.NNTrain(sys_model[i], cv_input_list[i], cv_target_list[i], train_input_list[i], train_target_list[i], path_results, cv_init_list[i],train_init_list[i],train_lengthMask=train_lengthMask_list[i],cv_lengthMask=cv_lengthMask_list[i])
          else:
             hknet_pipeline.NNTrain(sys_model[i], cv_input_list[i], cv_target_list[i], train_input_list[i], train_target_list[i], path_results,cv_init_list[i],train_init_list[i])
 else:
-   for i in range(len(SoW)):  
+   for i in range(SoW_train):  
       if args.randomLength:
          hknet_pipeline.NNTrain(sys_model[i], cv_input_list[i], cv_target_list[i], train_input_list[i], train_target_list[i], path_results, cv_init_list[i],train_init_list[i],train_lengthMask=train_lengthMask_list[i],cv_lengthMask=cv_lengthMask_list[i])
       else:
          hknet_pipeline.NNTrain(sys_model[i], cv_input_list[i], cv_target_list[i], train_input_list[i], train_target_list[i], path_results,cv_init_list[i],train_init_list[i])
 
 ## Test Neural Networks for each dataset
-for i in range(len(SoW)):
+for i in range(SoW_train, len(SoW)+1):
    if args.randomLength:
       hknet_pipeline.NNTest(sys_model[i], test_input_list[i], test_target_list[i], path_results,test_init_list[i],test_lengthMask=test_lengthMask_list[i])
    else:    
