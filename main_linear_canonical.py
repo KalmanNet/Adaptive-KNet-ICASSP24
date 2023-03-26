@@ -36,6 +36,7 @@ if args.use_cuda:
    if torch.cuda.is_available():
       device = torch.device('cuda')
       print("Using GPU")
+      torch.set_default_tensor_type(torch.cuda.FloatTensor)
    else:
       raise Exception("No GPU found, please set args.use_cuda = False")
 else:
@@ -60,10 +61,10 @@ if args.randomInit_train or args.randomInit_cv or args.randomInit_test:
    # you can modify initial variance
    args.variance = 1
    args.distribution = 'normal' # 'uniform' or 'normal'
-   m2_0 = args.variance * torch.eye(m).to(device)
+   m2_0 = args.variance * torch.eye(m)
 else: 
    # deterministic initial condition
-   m2_0 = 0 * torch.eye(m).to(device)
+   m2_0 = 0 * torch.eye(m)
 # sequence length
 args.T = 100
 args.T_test = 100
@@ -80,31 +81,26 @@ else:
    test_lengthMask = None
 
 ### training parameters ##################################################
-mixed_dataset = False # use mixed dataset or one-by-one
-if mixed_dataset:
-   args.n_steps = 10 # switch dataset every *** steps
-   n_turns = 20 # number of turns, each turn len(SoW) datasets are used 
-else:
-   args.n_steps = 500 # for each dataset
-
-args.n_batch = 30
+args.wandb_switch = True
+if args.wandb_switch:
+   import wandb
+   wandb.init(project="HKNet_Linear")
+args.n_steps = 10
+args.n_batch = 100
 args.lr = 1e-4
 args.wd = 1e-3
 
 ### True model ##################################################
 # SoW
-SoW = torch.tensor([[0,0,1,10], [0,0,1,1], [0,0,1,0.1], [0,0,1,5], [0,0,1,0.5]]).float().to(device)
-SoW_train = 3 # first # datasets are used for training
-
+SoW = torch.tensor([[0,0,1,0], [0,0,1,2], [0,0,1,4], [0,0,1,6], [0,0,1,8], [0,0,1,10], [0,0,1,0.5], [0,0,1,9]])
+SoW_train_range = [0,1,2,3,4,5] # first *** number of datasets are used for training
+SoW_test_range = [6,7] # last *** number of datasets are used for testing
 # noise
-r2 = torch.tensor([1, 1, 1, 1, 1]).float().to(device)
-# vdB = -20 # ratio v=q2/r2
-# v = 10**(vdB/10)
-# q2 = torch.mul(v,r2)
-q2 = torch.tensor([10, 1, 0.1, 5, 0.5]).float().to(device)
+r2 = torch.tensor([1, 1, 1, 1, 1, 1, 1, 1])
+q2 = torch.tensor([0,2,4,6,8,10,0.5,9])
 for i in range(len(SoW)):
    print(f"SoW of dataset {i}: ", SoW[i])
-   print(f"1/r2 [dB] and 1/q2 [dB] of dataset  {i}: ", 10 * torch.log10(1/r2[i]), 10 * torch.log10(1/q2[i]))
+   print(f"r2 [linear] and q2 [linear] of dataset  {i}: ", r2[i], q2[i])
 
 # model
 sys_model = []
@@ -116,8 +112,9 @@ for i in range(len(SoW)):
 ### paths ##################################################
 path_results = 'simulations/linear_canonical/results/'
 dataFolderName = 'data/linear_canonical' + '/'
-dataFileName = ('2x2_rq0-10_T100.pt', '2x2_rq00_T100.pt', '2x2_rq010_T100.pt', 'test1.pt', 'test2.pt')
-
+dataFileName = []
+for i in range(len(SoW)):
+   dataFileName.append('r2' + str(r2[i])+"_" +"q2"+ str(q2[i])+ '.pt')
 ###################################
 ### Data Loader (Generate Data) ###
 ###################################
@@ -202,7 +199,7 @@ for i in range(len(SoW)):
 ##################################
 ### Hyper - KalmanNet Pipeline ###
 ##################################
-# Build Neural Networks
+## Build Neural Networks
 print("Build HNet and KNet")
 KalmanNet_model = KalmanNetNN()
 weight_size = KalmanNet_model.NNBuild(sys_model[0], args)
@@ -211,33 +208,30 @@ HyperNet_model = HyperNetwork(args, weight_size)
 weight_size_hnet = sum(p.numel() for p in HyperNet_model.parameters() if p.requires_grad)
 print("Number of parameters for HyperNet:", weight_size_hnet)
 print("Total number of parameters:", weight_size + weight_size_hnet)
-
 ## Set up pipeline
 hknet_pipeline = Pipeline_hknet(strTime, "pipelines", "hknet")
 hknet_pipeline.setModel(HyperNet_model, KalmanNet_model)
 hknet_pipeline.setTrainingParams(args)
-
+## Optinal: record parameters to wandb
+if args.wandb_switch:
+   wandb.log({
+   "batch_size": args.n_batch,
+   "learning_rate": args.lr,  
+   "weight_decay": args.wd})
 ## Train Neural Networks
-if mixed_dataset:
-   for turns in range(n_turns):
-      for i in range(SoW_train):
-         if args.randomLength:
-            hknet_pipeline.NNTrain(sys_model[i], cv_input_list[i], cv_target_list[i], train_input_list[i], train_target_list[i], path_results, cv_init_list[i],train_init_list[i],train_lengthMask=train_lengthMask_list[i],cv_lengthMask=cv_lengthMask_list[i])
-         else:
-            hknet_pipeline.NNTrain(sys_model[i], cv_input_list[i], cv_target_list[i], train_input_list[i], train_target_list[i], path_results,cv_init_list[i],train_init_list[i])
+if args.randomLength:
+   hknet_pipeline.NNTrain_mixdatasets(SoW_train_range, sys_model, cv_input_list, cv_target_list, train_input_list, train_target_list, path_results, cv_init_list,train_init_list,train_lengthMask=train_lengthMask_list,cv_lengthMask=cv_lengthMask_list)
 else:
-   for i in range(SoW_train):  
-      if args.randomLength:
-         hknet_pipeline.NNTrain(sys_model[i], cv_input_list[i], cv_target_list[i], train_input_list[i], train_target_list[i], path_results, cv_init_list[i],train_init_list[i],train_lengthMask=train_lengthMask_list[i],cv_lengthMask=cv_lengthMask_list[i])
-      else:
-         hknet_pipeline.NNTrain(sys_model[i], cv_input_list[i], cv_target_list[i], train_input_list[i], train_target_list[i], path_results,cv_init_list[i],train_init_list[i])
+   hknet_pipeline.NNTrain_mixdatasets(SoW_train_range, sys_model, cv_input_list, cv_target_list, train_input_list, train_target_list, path_results,cv_init_list,train_init_list)
 
 ## Test Neural Networks for each dataset
-for i in range(SoW_train, len(SoW)+1):
-   if args.randomLength:
-      hknet_pipeline.NNTest(sys_model[i], test_input_list[i], test_target_list[i], path_results,test_init_list[i],test_lengthMask=test_lengthMask_list[i])
-   else:    
-      hknet_pipeline.NNTest(sys_model[i], test_input_list[i], test_target_list[i], path_results,test_init_list[i])
+if args.randomLength:
+   hknet_pipeline.NNTest_alldatasets(SoW_test_range, sys_model, test_input_list, test_target_list, path_results,test_init_list,test_lengthMask=test_lengthMask_list)
+else:    
+   hknet_pipeline.NNTest_alldatasets(SoW_test_range, sys_model, test_input_list, test_target_list, path_results,test_init_list)
 
 ## Save pipeline
 hknet_pipeline.save()
+## Close wandb run
+if args.wandb_switch: 
+   wandb.finish() 

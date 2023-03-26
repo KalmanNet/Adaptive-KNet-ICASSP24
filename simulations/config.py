@@ -37,6 +37,8 @@ def general_settings():
 
 
     ### Training settings
+    parser.add_argument('--wandb_switch', type=bool, default=False, metavar='wandb',
+                        help='if True, use wandb')
     parser.add_argument('--use_cuda', type=bool, default=False, metavar='CUDA',
                         help='if True, use CUDA')
     parser.add_argument('--n_steps', type=int, default=1000, metavar='N_steps',

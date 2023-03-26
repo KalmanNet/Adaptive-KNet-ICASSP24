@@ -43,4 +43,8 @@ import ipdb
 # FC[0].bias = nn.Parameter(torch.ones(d_hidden_FC))
 
 ##########################################################################################
+Sow_range = [0,1,2]
+for i in Sow_range:
+    print(i)
 
+print(len(Sow_range))
