@@ -1,6 +1,12 @@
 """
 This file contains the class Pipeline_hknet, 
-which is used to train the hyper-KalmanNet model.
+which is used to train and test the hyper-KalmanNet model.
+
+functions:
+* NNTrain: train the hyper-KalmanNet model on one dataset
+* NNTest: test the hyper-KalmanNet model on one dataset
+* NNTrain_mixdatasets: train the hyper-KalmanNet model on multiple datasets
+* NNTest_alldatasets: test the hyper-KalmanNet model on multiple datasets
 """
 
 import torch
@@ -270,6 +276,13 @@ class Pipeline_hknet:
             self.hnet = torch.load(path_results+'hnet_best-model.pt', map_location=self.device)
             self.mnet = torch.load(path_results+'mnet_best-model.pt', map_location=self.device) 
         
+        # dataset size    
+        for i in SoW_test_range[:-1]:# except the last one
+            assert(test_target_tuple[i][0].shape[1]==test_target_tuple[i+1][0].shape[1])
+            assert(test_target_tuple[i][0].shape[2]==test_target_tuple[i+1][0].shape[2])
+            # check all datasets have the same m, T   
+        sysmdl_m = test_target_tuple[0][0].shape[1]
+        sysmdl_T_test = test_target_tuple[0][0].shape[2]
         total_size = 0 # total size for all datasets
         for i in SoW_test_range: 
             total_size += test_input_tuple[i][0].shape[0] 
@@ -285,11 +298,8 @@ class Pipeline_hknet:
             # load data
             test_input = test_input_tuple[i][0]
             test_target = test_target_tuple[i][0]
-            # data size
-            self.N_T = test_input.shape[0]
-            sysmdl_m = test_target.size()[1]
-            sysmdl_T_test = test_target.size()[2]
-            
+            # test data size
+            self.N_T = test_input.shape[0]  
             if MaskOnState:
                 mask = torch.tensor([True,False,False])
                 if sysmdl_m == 2: 
