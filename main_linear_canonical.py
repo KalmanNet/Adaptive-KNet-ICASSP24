@@ -85,19 +85,19 @@ args.wandb_switch = True
 if args.wandb_switch:
    import wandb
    wandb.init(project="HKNet_Linear")
-args.n_steps = 10
-args.n_batch = 100
-args.lr = 1e-4
+args.n_steps = 1000
+args.n_batch = 100 # will be multiplied by num of datasets
+args.lr = 1e-5
 args.wd = 1e-3
 
 ### True model ##################################################
 # SoW
-SoW = torch.tensor([[0,0,1,0], [0,0,1,2], [0,0,1,4], [0,0,1,6], [0,0,1,8], [0,0,1,10], [0,0,1,0.5], [0,0,1,9]])
-SoW_train_range = [0,1,2,3,4,5] # first *** number of datasets are used for training
-SoW_test_range = [6,7] # last *** number of datasets are used for testing
+SoW = torch.tensor([[0,0,1,1], [0,0,1,4], [0,0,1,7], [0,0,1,10], [0,0,1,1.5], [0,0,1,5.5], [0,0,1,9]])
+SoW_train_range = [0,1,2,3] # first *** number of datasets are used for training
+SoW_test_range = [4,5,6] # last *** number of datasets are used for testing
 # noise
-r2 = torch.tensor([1, 1, 1, 1, 1, 1, 1, 1])
-q2 = torch.tensor([0,2,4,6,8,10,0.5,9])
+r2 = SoW[:, 2]
+q2 = SoW[:, 3]
 for i in range(len(SoW)):
    print(f"SoW of dataset {i}: ", SoW[i])
    print(f"r2 [linear] and q2 [linear] of dataset  {i}: ", r2[i], q2[i])
@@ -114,13 +114,13 @@ path_results = 'simulations/linear_canonical/results/'
 dataFolderName = 'data/linear_canonical' + '/'
 dataFileName = []
 for i in range(len(SoW)):
-   dataFileName.append('r2' + str(r2[i])+"_" +"q2"+ str(q2[i])+ '.pt')
+   dataFileName.append('r2=' + str(r2[i].item())+"_" +"q2="+ str(q2[i].item())+ '.pt')
 ###################################
 ### Data Loader (Generate Data) ###
 ###################################
-print("Start Data Gen")
-for i in range(len(SoW)):
-   DataGen(args, sys_model[i], dataFolderName + dataFileName[i])
+# print("Start Data Gen")
+# for i in range(len(SoW)):
+#    DataGen(args, sys_model[i], dataFolderName + dataFileName[i])
 print("Data Load")
 train_input_list = []
 train_target_list = []
@@ -215,6 +215,7 @@ hknet_pipeline.setTrainingParams(args)
 ## Optinal: record parameters to wandb
 if args.wandb_switch:
    wandb.log({
+   "total_params": weight_size + weight_size_hnet,
    "batch_size": args.n_batch,
    "learning_rate": args.lr,  
    "weight_decay": args.wd})
