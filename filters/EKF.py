@@ -3,7 +3,7 @@ Theoretical Non Linear Kalman
 """
 import torch
 
-from simulations.Lorenz_Atractor.parameters import getJacobian
+from simulations.lorenz_attractor.parameters import getJacobian
 
 class ExtendedKalmanFilter:
 

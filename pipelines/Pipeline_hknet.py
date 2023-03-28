@@ -321,7 +321,7 @@ class Pipeline_hknet:
             start = time.time()
 
             # Init Sequence
-            self.mnet.InitSequence(test_init, sysmdl_T_test)               
+            self.mnet.InitSequence(test_init[i], sysmdl_T_test)               
             
             weights = self.hnet(SoW_test)
             for t in range(0, sysmdl_T_test):

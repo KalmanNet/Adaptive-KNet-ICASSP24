@@ -47,7 +47,7 @@ class Pipeline_EKF:
         # the model for us. Here we will use Adam; the optim package contains many other
         # optimization algoriths. The first argument to the Adam constructor tells the
         # optimizer which Tensors it should update.
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learningRate, weight_decay=self.weightDecay)
+        self.optimizer = torch.optim.Adam(self.model.weights.parameters(), lr=self.learningRate, weight_decay=self.weightDecay)
 
     def NNTrain(self, SysModel, cv_input, cv_target, train_input, train_target, path_results, \
         MaskOnState=False, randomInit=False,cv_init=None,train_init=None,\
@@ -84,7 +84,7 @@ class Pipeline_EKF:
             self.model.train()
             self.model.batch_size = self.N_B
             # Init Hidden State
-            self.model.init_hidden_KNet()
+            self.model.init_hidden()
 
             # Init Training Batch tensors
             y_training_batch = torch.zeros([self.N_B, SysModel.n, SysModel.T]).to(self.device)
@@ -200,7 +200,7 @@ class Pipeline_EKF:
             self.model.eval()
             self.model.batch_size = self.N_CV
             # Init Hidden State
-            self.model.init_hidden_KNet()
+            self.model.init_hidden()
             with torch.no_grad():
 
                 SysModel.T_test = cv_input.size()[-1] # T_test is the maximum length of the CV sequences
@@ -245,8 +245,8 @@ class Pipeline_EKF:
                 if (self.MSE_cv_dB_epoch[ti] < self.MSE_cv_dB_opt):
                     self.MSE_cv_dB_opt = self.MSE_cv_dB_epoch[ti]
                     self.MSE_cv_idx_opt = ti
-                    
-                    torch.save(self.model, path_results + 'best-model.pt')
+                    # Save the model weights to a file
+                    torch.save(self.model.state_dict(), path_results + 'knet_best-model.pt')
 
             ########################
             ### Training Summary ###
@@ -266,11 +266,14 @@ class Pipeline_EKF:
     def NNTest(self, SysModel, test_input, test_target, path_results, MaskOnState=False,\
      randomInit=False,test_init=None,load_model=False,load_model_path=None,\
         test_lengthMask=None):
-        # Load model
+        # Load model weights
         if load_model:
-            self.model = torch.load(load_model_path, map_location=self.device) 
+            model_weights = torch.load(load_model_path, map_location=self.device) 
         else:
-            self.model = torch.load(path_results+'best-model.pt', map_location=self.device) 
+            model_weights = torch.load(path_results+'knet_best-model.pt', map_location=self.device) 
+        # Set the loaded weights to the model
+        # FIXME: if not NNTrain before, the model is not defined
+        self.model.load_state_dict(model_weights)
 
         self.N_T = test_input.shape[0]
         SysModel.T_test = test_input.size()[-1]
@@ -289,7 +292,7 @@ class Pipeline_EKF:
         self.model.eval()
         self.model.batch_size = self.N_T
         # Init Hidden State
-        self.model.init_hidden_KNet()
+        self.model.init_hidden()
         torch.no_grad()
 
         start = time.time()
