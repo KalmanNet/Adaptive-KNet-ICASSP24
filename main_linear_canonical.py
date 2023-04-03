@@ -31,7 +31,7 @@ print("Current Time =", strTime)
 ### Parameter Setting ###
 #########################
 args = config.general_settings()
-args.use_cuda = True # use GPU or not
+args.use_cuda = False # use GPU or not
 if args.use_cuda:
    if torch.cuda.is_available():
       device = torch.device('cuda')
@@ -81,11 +81,11 @@ else:
    test_lengthMask = None
 
 ### training parameters ##################################################
-args.wandb_switch = True
+args.wandb_switch = False
 if args.wandb_switch:
    import wandb
    wandb.init(project="HKNet_Linear")
-args.n_steps = 1000
+args.n_steps = 2
 args.n_batch = 100 # will be multiplied by num of datasets
 args.lr = 1e-5
 args.wd = 1e-3
@@ -94,7 +94,7 @@ args.wd = 1e-3
 # SoW
 SoW = torch.tensor([[0,0,1,1], [0,0,1,4], [0,0,1,7], [0,0,1,10], [0,0,1,1.5], [0,0,1,5.5], [0,0,1,9]])
 SoW_train_range = [0,1,2,3] # first *** number of datasets are used for training
-SoW_test_range = [4,5,6] # last *** number of datasets are used for testing
+SoW_test_range = [0,1,2,3,4,5,6] # last *** number of datasets are used for testing
 # noise
 r2 = SoW[:, 2]
 q2 = SoW[:, 3]
@@ -231,8 +231,8 @@ if args.randomLength:
 else:    
    hknet_pipeline.NNTest_alldatasets(SoW_test_range, sys_model, test_input_list, test_target_list, path_results,test_init_list)
 
-## Save pipeline
-hknet_pipeline.save()
+# ## Save pipeline
+# hknet_pipeline.save()
 ## Close wandb run
 if args.wandb_switch: 
    wandb.finish() 

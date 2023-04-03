@@ -41,6 +41,9 @@ else:
     device = torch.device('cpu')
     print("Using CPU")
 ### dataset parameters
+Q_structure = Q_structure.to(device)
+R_structure = R_structure.to(device)
+m1x_0 = m1x_0.to(device)
 args.N_E = 1000
 args.N_CV = 100
 args.N_T = 200
@@ -54,11 +57,11 @@ args.out_mult_KNet = 5
 args.wandb_switch = True
 if args.wandb_switch:
    import wandb
-   wandb.init(project="HKNet_Linear")
+   wandb.init(project="HKNet_Lor")
 args.n_steps = 2000
 args.n_batch = 100
-args.lr = 1e-4
-args.wd = 1e-4
+args.lr = 1e-6
+args.wd = 1e-9
 args.CompositionLoss = True
 args.alpha = 0.5
 
