@@ -273,6 +273,13 @@ class Pipeline_cm:
             self.hnet = torch.load(path_results+'hnet_best-model.pt', map_location=self.device)
             self.mnet = torch.load(path_results+'mnet_best-model.pt', map_location=self.device) 
         
+        # dataset size    
+        for i in SoW_test_range[:-1]:# except the last one
+            assert(test_target_tuple[i][0].shape[1]==test_target_tuple[i+1][0].shape[1])
+            assert(test_target_tuple[i][0].shape[2]==test_target_tuple[i+1][0].shape[2])
+            # check all datasets have the same m, T   
+        sysmdl_m = test_target_tuple[0][0].shape[1]
+        sysmdl_T_test = test_target_tuple[0][0].shape[2]
         total_size = 0 # total size for all datasets
         for i in SoW_test_range: 
             total_size += test_input_tuple[i][0].shape[0] 
@@ -290,8 +297,6 @@ class Pipeline_cm:
             test_target = test_target_tuple[i][0]
             # data size
             self.N_T = test_input.shape[0]
-            sysmdl_m = test_target.size()[1]
-            sysmdl_T_test = test_target.size()[2]
             
             if MaskOnState:
                 mask = torch.tensor([True,False,False])
@@ -314,7 +319,7 @@ class Pipeline_cm:
             start = time.time()
 
             # Init Sequence
-            self.mnet.InitSequence(test_init, sysmdl_T_test)               
+            self.mnet.InitSequence(test_init[i], sysmdl_T_test)               
             
             weights_cm = self.hnet(SoW_test)
             for t in range(0, sysmdl_T_test):

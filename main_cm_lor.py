@@ -1,14 +1,13 @@
 import torch
-import torch.nn as nn
 from datetime import datetime
 
-from simulations.Linear_sysmdl import SystemModel
+from filters.EKF_test import EKFTest
+
+from simulations.Extended_sysmdl import SystemModel
 from simulations.utils import DataGen
 import simulations.config as config
-from simulations.linear_canonical.parameters import F, H, Q_structure, R_structure,\
-   m, m1_0
-
-from filters.KalmanFilter_test import KFTest
+from simulations.lorenz_attractor.parameters import m1x_0, m2x_0, m, n,\
+f, h, h_nonlinear, Q_structure, R_structure
 
 from hnets.hnet import HyperNetwork
 from mnets.KNet_mnet import KalmanNetNN as KNet_mnet
@@ -17,7 +16,6 @@ from pipelines.Pipeline_cm import Pipeline_cm
 from pipelines.Pipeline_EKF import Pipeline_EKF
 
 print("Pipeline Start")
-
 ################
 ### Get Time ###
 ################
@@ -28,9 +26,9 @@ strNow = now.strftime("%H:%M:%S")
 strTime = strToday + "_" + strNow
 print("Current Time =", strTime)
 
-#########################
-### Parameter Setting ###
-#########################
+###################
+###  Settings   ###
+###################
 args = config.general_settings()
 args.use_cuda = True # use GPU or not
 if args.use_cuda:
@@ -43,78 +41,68 @@ if args.use_cuda:
 else:
     device = torch.device('cpu')
     print("Using CPU")
-
-### dataset parameters ##################################################
-F = F.to(device)
-H = H.to(device)
+### dataset parameters
 Q_structure = Q_structure.to(device)
 R_structure = R_structure.to(device)
-m1_0 = m1_0.to(device)
-
+m1x_0 = m1x_0.to(device)
 args.N_E = 1000
 args.N_CV = 100
 args.N_T = 200
-# deterministic initial condition
-m2_0 = 0 * torch.eye(m)
-# sequence length
-args.T = 100
-args.T_test = 100
-train_lengthMask = None
-cv_lengthMask = None
-test_lengthMask = None
+args.T = 20
+args.T_test = 20
+### settings for KalmanNet
+args.in_mult_KNet = 40
+args.out_mult_KNet = 5
 
-### training parameters ##################################################
+### training parameters
 args.wandb_switch = True
 if args.wandb_switch:
    import wandb
-   wandb.init(project="HKNet_Linear")
-args.knet_trainable = True
-# training parameters for KNet
-args.n_steps = 1000
-args.n_batch = 100 
-args.lr = 1e-4
+   wandb.init(project="HKNet_Lor")
+args.n_steps = 2000
+args.n_batch = 100
+args.lr = 1e-6
 args.wd = 1e-9
+args.CompositionLoss = True
+args.alpha = 0.5
 # training parameters for Hypernet
-n_steps = 10000
+n_steps = 1000
 n_batch = 100 # will be multiplied by num of datasets
-lr = 1e-6
-wd = 1e-9
+lr = 1e-3
+wd = 1e-4
 
-### True model ##################################################
+### True model
 # SoW
-SoW = torch.tensor([[0,0,10,10], [0,0,10,1], [0,0,10,0.1], [0,0,10,0.01],
-                    [0,0,1,10], [0,0,1,1], [0,0,1,0.1], [0,0,1,0.01],
-                    [0,0,0.1,10], [0,0,0.1,1], [0,0,0.1,0.1], [0,0,0.1,0.01],
-                    [0,0,0.01,10], [0,0,0.01,1], [0,0,0.01,0.1], [0,0,0.01,0.01]])
-SoW_train_range = list(range(len(SoW))) # first *** number of datasets are used for training
-print("SoW_train_range: ", SoW_train_range)
-SoW_test_range = list(range(len(SoW))) # last *** number of datasets are used for testing
+SoW = torch.tensor([[0,0,1,0.1], [0,0,1,0.4], [0,0,1,0.7], [0,0,1,1], [0,0,1,0.15], [0,0,1,0.55], [0,0,1,0.9]])
+SoW_train_range = [0,1,2,3] # first *** number of datasets are used for training
+SoW_test_range = [0,1,2,3,4,5,6] # last *** number of datasets are used for testing
 # noise
 r2 = SoW[:, 2]
 q2 = SoW[:, 3]
 for i in range(len(SoW)):
    print(f"SoW of dataset {i}: ", SoW[i])
    print(f"r2 [linear] and q2 [linear] of dataset  {i}: ", r2[i], q2[i])
-
 # model
 sys_model = []
 for i in range(len(SoW)):
-   sys_model_i = SystemModel(F, q2[i]*Q_structure, H, r2[i]*R_structure, args.T, args.T_test, SoW[i])
-   sys_model_i.InitSequence(m1_0, m2_0)
+   sys_model_i = SystemModel(f, q2[i]*Q_structure, h_nonlinear, r2[i]*R_structure, args.T, args.T_test, m, n)# parameters for GT
+   sys_model_i.InitSequence(m1x_0, m2x_0)# x0 and P0
    sys_model.append(sys_model_i)
 
-### paths ##################################################
-path_results = 'simulations/linear_canonical/results/'
-dataFolderName = 'data/linear_canonical/30dB' + '/'
+### paths 
+path_results = 'simulations/lorenz_attractor/results/'
+DatafolderName = 'data/lorenz_attractor/'
+# traj_resultName = ['traj_lorDT_NLobs_rq3030_T20.pt']
 dataFileName = []
 for i in range(len(SoW)):
    dataFileName.append('r2=' + str(r2[i].item())+"_" +"q2="+ str(q2[i].item())+ '.pt')
-###################################
-### Data Loader (Generate Data) ###
-###################################
+
+#########################################
+###  Generate and load data DT case   ###
+#########################################
 # print("Start Data Gen")
 # for i in range(len(SoW)):
-#    DataGen(args, sys_model[i], dataFolderName + dataFileName[i])
+#    DataGen(args, sys_model[i], DatafolderName + dataFileName[i])
 print("Data Load")
 train_input_list = []
 train_target_list = []
@@ -125,9 +113,9 @@ test_target_list = []
 train_init_list = []
 cv_init_list = []
 test_init_list = []
-
-for i in range(len(SoW)):  
-   [train_input, train_target, cv_input, cv_target, test_input, test_target,train_init, cv_init, test_init] = torch.load(dataFolderName + dataFileName[i], map_location=device)
+for i in range(len(SoW)):
+   [train_input,train_target, cv_input, cv_target, test_input, test_target,train_init, cv_init, test_init] =  torch.load(DatafolderName + dataFileName[i], map_location=device)   
+   
    train_input_list.append((train_input, SoW[i]))
    train_target_list.append((train_target, SoW[i]))
    cv_input_list.append((cv_input, SoW[i]))
@@ -138,17 +126,29 @@ for i in range(len(SoW)):
    cv_init_list.append(cv_init)
    test_init_list.append(test_init)
 
-##############################
-### Evaluate Kalman Filter ###
-##############################
-print("Evaluate Kalman Filter True")
+########################
+### Evaluate Filters ###
+########################
+# ### Evaluate EKF full
+print("Evaluate EKF full")
 for i in range(len(SoW)):
    test_input = test_input_list[i][0]
    test_target = test_target_list[i][0]
-   test_init = test_init_list[i][0]  
-   test_lengthMask = None 
-   print(f"Dataset {i}") 
-   [MSE_KF_linear_arr, MSE_KF_linear_avg, MSE_KF_dB_avg, KF_out] = KFTest(args, sys_model[i], test_input, test_target, test_lengthMask=test_lengthMask)
+   test_init = test_init_list[i][0]
+   print(f"Dataset {i}")
+   [MSE_EKF_linear_arr, MSE_EKF_linear_avg, MSE_EKF_dB_avg, EKF_KG_array, EKF_out] = EKFTest(args, sys_model[i], test_input, test_target)
+
+# ### Save trajectories
+# trajfolderName = 'Filters' + '/'
+# DataResultName = traj_resultName[0]
+# EKF_sample = torch.reshape(EKF_out[0],[1,m,args.T_test])
+# target_sample = torch.reshape(test_target[0,:,:],[1,m,args.T_test])
+# input_sample = torch.reshape(test_input[0,:,:],[1,n,args.T_test])
+# torch.save({
+#             'EKF': EKF_sample,
+#             'ground_truth': target_sample,
+#             'observation': input_sample,
+#             }, trajfolderName+DataResultName)
 
 
 ##################################
