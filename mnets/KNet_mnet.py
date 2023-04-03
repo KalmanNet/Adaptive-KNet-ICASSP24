@@ -204,13 +204,13 @@ class KalmanNetNN(torch.nn.Module):
         self.register_parameter('lstm_s_b_hh', nn.Parameter(torch.Tensor(d_hidden_S * 4)))
         self._weights.append(self.lstm_s_b_hh)
         
-        ### Initialize weights (load frozen weights if not trainable, else apply Xavier and He initialization) ###       
+        ### Initialize weights (load frozen weights/hypernet generates weights if not trainable, else apply Xavier and He initialization) ###       
         if self.knet_trainable == False:
-            # load frozen weights
-            assert frozen_weights is not None, "Frozen weights must be provided if layer is not trainable"
-            model_state_dict = self.state_dict() # get the current state dict of the model
-            model_state_dict.update(frozen_weights) # update the current state dict with the frozen KNet weights
-            self.load_state_dict(model_state_dict) # load the updated state dict to the model
+            # load frozen weights if provided (else hypernet generates weights)
+            if frozen_weights is not None:  
+                model_state_dict = self.state_dict() # get the current state dict of the model
+                model_state_dict.update(frozen_weights) # update the current state dict with the frozen KNet weights
+                self.load_state_dict(model_state_dict) # load the updated state dict to the model
             # Block gradient flow if not trainable 
             for param in self.parameters():
                 param.requires_grad = False

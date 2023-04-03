@@ -59,10 +59,12 @@ args.wandb_switch = True
 if args.wandb_switch:
    import wandb
    wandb.init(project="HKNet_Lor")
-args.n_steps = 2000
+# training parameters for KalmanNet
+args.knet_trainable = True
+args.n_steps = 10000
 args.n_batch = 100
-args.lr = 1e-6
-args.wd = 1e-9
+args.lr = 1e-3
+args.wd = 1e-3
 args.CompositionLoss = True
 args.alpha = 0.5
 # training parameters for Hypernet

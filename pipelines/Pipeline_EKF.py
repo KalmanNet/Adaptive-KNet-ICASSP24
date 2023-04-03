@@ -53,6 +53,9 @@ class Pipeline_EKF:
         MaskOnState=False, randomInit=False,cv_init=None,train_init=None,\
         train_lengthMask=None,cv_lengthMask=None):
 
+        if self.args.wandb_switch: 
+            import wandb
+
         self.N_E = len(train_input)
         self.N_CV = len(cv_input)
 
@@ -128,7 +131,7 @@ class Pipeline_EKF:
             if (self.args.CompositionLoss):
                 y_hat = torch.zeros([self.N_B, SysModel.n, SysModel.T])
                 for t in range(SysModel.T):
-                    y_hat[:,:,t] = torch.squeeze(SysModel.h(torch.unsqueeze(x_out_training_batch[:,:,t])))
+                    y_hat[:,:,t] = torch.squeeze(SysModel.h(torch.unsqueeze(x_out_training_batch[:,:,t],2)))
 
                 if(MaskOnState):### FIXME: composition loss, y_hat may have different mask with x
                     if self.args.randomLength:
@@ -260,12 +263,20 @@ class Pipeline_EKF:
                 print("diff MSE Training :", d_train, "[dB]", "diff MSE Validation :", d_cv, "[dB]")
 
             print("Optimal idx:", self.MSE_cv_idx_opt, "Optimal :", self.MSE_cv_dB_opt, "[dB]")
-
+            
+            ### Optinal: record loss on wandb
+            if self.args.wandb_switch:
+                wandb.log({
+                    "train_loss": self.MSE_train_dB_epoch[ti],
+                    "val_loss": self.MSE_cv_dB_epoch[ti]})
+            ###
         return [self.MSE_cv_linear_epoch, self.MSE_cv_dB_epoch, self.MSE_train_linear_epoch, self.MSE_train_dB_epoch]
 
     def NNTest(self, SysModel, test_input, test_target, path_results, MaskOnState=False,\
      randomInit=False,test_init=None,load_model=False,load_model_path=None,\
         test_lengthMask=None):
+        if self.args.wandb_switch: 
+            import wandb
         # Load model weights
         if load_model:
             model_weights = torch.load(load_model_path, map_location=self.device) 
@@ -338,6 +349,11 @@ class Pipeline_EKF:
         print(str, self.test_std_dB, "[dB]")
         # Print Run Time
         print("Inference Time:", t)
+
+        ### Optinal: record loss on wandb
+        if self.args.wandb_switch:
+            wandb.log({f'averaged test loss':self.MSE_test_dB_avg})
+        ###
 
         return [self.MSE_test_linear_arr, self.MSE_test_linear_avg, self.MSE_test_dB_avg, x_out_test, t]
 

@@ -271,15 +271,12 @@ class Pipeline_hknet:
         # Load model
         if load_model:
             hnet_model_weights = torch.load(load_model_path[0], map_location=self.device)
-            mnet_model_weights = torch.load(load_model_path[1], map_location=self.device) 
         else:
             hnet_model_weights = torch.load(path_results+'hnet_best-model.pt', map_location=self.device)
-            mnet_model_weights = torch.load(path_results+'mnet_best-model.pt', map_location=self.device) 
-        
+            
         # Set the loaded weights to the model
         # FIXME: if not NNTrain before, the model is not defined
         self.hnet.load_state_dict(hnet_model_weights)
-        self.mnet.load_state_dict(mnet_model_weights)
 
         # dataset size    
         for i in SoW_test_range[:-1]:# except the last one
@@ -330,7 +327,7 @@ class Pipeline_hknet:
             
             weights = self.hnet(SoW_test)
             for t in range(0, sysmdl_T_test):
-                x_out_test[current_idx:current_idx+self.N_T,:, t] = torch.squeeze(self.mnet(torch.unsqueeze(test_input[:,:, t],2), weights=weights))
+                x_out_test[current_idx:current_idx+self.N_T,:, t] = torch.squeeze(self.mnet(torch.unsqueeze(test_input[:,:, t],2), weights_knet=weights))
             
             end = time.time()
             t = end - start
@@ -480,7 +477,7 @@ class Pipeline_hknet:
                 # Forward Computation
                 weights = self.hnet(SoW_train)
                 for t in range(0, sysmdl_T):
-                    x_out_training_batch[:, :, t] = torch.squeeze(self.mnet(torch.unsqueeze(y_training_batch[:, :, t],2), weights=weights))
+                    x_out_training_batch[:, :, t] = torch.squeeze(self.mnet(torch.unsqueeze(y_training_batch[:, :, t],2), weights_knet=weights))
                 
                 # Compute Training Loss
                 MSE_trainbatch_linear_LOSS = 0
@@ -547,7 +544,7 @@ class Pipeline_hknet:
                     
                     weights = self.hnet(SoW_cv)
                     for t in range(0, sysmdl_T_test):
-                        x_out_cv_batch[:, :, t] = torch.squeeze(self.mnet(torch.unsqueeze(cv_input[:, :, t],2), weights=weights))
+                        x_out_cv_batch[:, :, t] = torch.squeeze(self.mnet(torch.unsqueeze(cv_input[:, :, t],2), weights_knet=weights))
                     
                     # Compute CV Loss
                     MSE_cvbatch_linear_LOSS = 0
@@ -600,15 +597,12 @@ class Pipeline_hknet:
         # Load model
         if load_model:
             hnet_model_weights = torch.load(load_model_path[0], map_location=self.device)
-            mnet_model_weights = torch.load(load_model_path[1], map_location=self.device) 
         else:
             hnet_model_weights = torch.load(path_results+'hnet_best-model.pt', map_location=self.device)
-            mnet_model_weights = torch.load(path_results+'mnet_best-model.pt', map_location=self.device) 
-        
+            
         # Set the loaded weights to the model
         # FIXME: if not NNTrain before, the model is not defined
         self.hnet.load_state_dict(hnet_model_weights)
-        self.mnet.load_state_dict(mnet_model_weights)
         
         # SoW
         assert torch.allclose(test_input_tuple[1], test_target_tuple[1]) 
@@ -650,7 +644,7 @@ class Pipeline_hknet:
         
         weights = self.hnet(SoW_test)
         for t in range(0, sysmdl_T_test):
-            x_out_test[:,:, t] = torch.squeeze(self.mnet(torch.unsqueeze(test_input[:,:, t],2), weights=weights))
+            x_out_test[:,:, t] = torch.squeeze(self.mnet(torch.unsqueeze(test_input[:,:, t],2), weights_knet=weights))
         
         end = time.time()
         t = end - start
