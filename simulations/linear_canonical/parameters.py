@@ -59,3 +59,6 @@ if(m==2):
 # Noise variance takes the form of a diagonal matrix
 Q_structure = torch.eye(m)
 R_structure = torch.eye(n)
+# Non-diagonal noise
+Q_structure_nonid = torch.tensor([[5, 2], [2, 5]])/torch.sqrt(torch.tensor(29))
+R_structure_nonid = torch.tensor([[3, 2], [2, 3]])/torch.sqrt(torch.tensor(13))

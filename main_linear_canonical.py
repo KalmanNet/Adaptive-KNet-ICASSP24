@@ -60,7 +60,7 @@ args.randomInit_test = False
 if args.randomInit_train or args.randomInit_cv or args.randomInit_test:
    # you can modify initial variance
    args.variance = 1
-   args.distribution = 'normal' # 'uniform' or 'normal'
+   args.init_distri = 'normal' # 'uniform' or 'normal'
    m2_0 = args.variance * torch.eye(m)
 else: 
    # deterministic initial condition

@@ -154,20 +154,20 @@ class SystemModel:
         if(randomInit):
             # Allocate Empty Array for Random Initial Conditions
             self.m1x_0_rand = torch.zeros(size, self.m, 1)
-            if args.distribution == 'uniform':
+            if args.init_distri == 'uniform':
                 ### if Uniform Distribution for random init
                 for i in range(size):           
                     initConditions = torch.rand_like(self.m1x_0) * args.variance
                     self.m1x_0_rand[i,:,0:1] = initConditions.view(self.m,1)     
             
-            elif args.distribution == 'normal':
+            elif args.init_distri == 'normal':
                 ### if Normal Distribution for random init
                 for i in range(size):
                     distrib = MultivariateNormal(loc=torch.squeeze(self.m1x_0), covariance_matrix=self.m2x_0)
                     initConditions = distrib.rsample().view(self.m,1)
                     self.m1x_0_rand[i,:,0:1] = initConditions
             else:
-                raise ValueError('args.distribution not supported!')
+                raise ValueError('args.init_distri not supported!')
             
             self.Init_batched_sequence(self.m1x_0_rand, self.m2x_0)### for sequence generation
         else: # fixed init

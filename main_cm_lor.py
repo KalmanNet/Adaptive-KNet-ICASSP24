@@ -167,10 +167,10 @@ KalmanNet_Pipeline.setssModel(sys_model[0])
 KalmanNet_Pipeline.setModel(KalmanNet_model)
 KalmanNet_Pipeline.setTrainingParams(args)
 KalmanNet_Pipeline.NNTrain(sys_model[0], cv_input_list[0][0], cv_target_list[0][0], train_input_list[0][0], train_target_list[0][0], path_results)
-## save model weights
-torch.save(KalmanNet_Pipeline.model.state_dict(), path_results + 'knet_frozen_weights.pt')
-frozen_weights = torch.load(path_results + 'knet_frozen_weights.pt', map_location=device) 
+KalmanNet_Pipeline.NNTest(sys_model[0], test_input_list[0][0], test_target_list[0][0], path_results)
 
+# load frozen weights
+frozen_weights = torch.load(path_results + 'knet_best-model.pt', map_location=device) 
 ### frozen KNet weights, train hypernet to generate CM weights on multiple datasets
 args.knet_trainable = False # frozen KNet weights
 args.use_context_mod = True # use CM
