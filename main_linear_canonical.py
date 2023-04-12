@@ -111,7 +111,7 @@ for i in range(len(SoW)):
 
 ### paths ##################################################
 path_results = 'simulations/linear_canonical/results/'
-dataFolderName = 'data/linear_canonical' + '/'
+dataFolderName = 'data/linear_canonical/r2=1' + '/'
 dataFileName = []
 for i in range(len(SoW)):
    dataFileName.append('r2=' + str(r2[i].item())+"_" +"q2="+ str(q2[i].item())+ '.pt')

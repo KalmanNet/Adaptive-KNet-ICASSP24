@@ -72,7 +72,7 @@ args.knet_trainable = True
 # training parameters for KNet
 args.n_steps = 5000
 args.n_batch = 100 
-args.lr = 1e-5
+args.lr = 1e-3
 args.wd = 1e-3
 # training parameters for Hypernet
 n_steps = 1000
@@ -155,7 +155,7 @@ for i in range(len(SoW)):
 ### Hyper - KalmanNet Pipeline ###
 ##################################
 ### train and test KalmanNet on dataset 0
-print("KalmanNet pipeline start, train on dataset 0")
+print("KalmanNet pipeline start")
 KalmanNet_model = KNet_mnet()
 KalmanNet_model.NNBuild(sys_model[0], args)
 print("Number of trainable parameters for KalmanNet:",sum(p.numel() for p in KalmanNet_model.parameters() if p.requires_grad))
@@ -164,7 +164,7 @@ KalmanNet_Pipeline = Pipeline_EKF(strTime, "KNet", "KalmanNet")
 KalmanNet_Pipeline.setssModel(sys_model[0])
 KalmanNet_Pipeline.setModel(KalmanNet_model)
 KalmanNet_Pipeline.setTrainingParams(args)
-KalmanNet_Pipeline.NNTrain(sys_model[0], cv_input_list[0][0], cv_target_list[0][0], train_input_list[0][0], train_target_list[0][0], path_results)
+KalmanNet_Pipeline.NNTrain_mixdatasets(SoW_train_range, sys_model, cv_input_list, cv_target_list, train_input_list, train_target_list, path_results,cv_init_list,train_init_list)
 ## Test Neural Network on all datasets
 for i in range(len(SoW)):
    test_input = test_input_list[i][0]

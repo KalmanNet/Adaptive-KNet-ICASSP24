@@ -80,15 +80,15 @@ class Pipeline_cm:
             # each turn, go through all datasets
             #################
             ### Training  ###
-            #################          
+            #################  
+            self.optimizer.zero_grad()         
             # Training Mode
             self.hnet.train()
             self.mnet.batch_size = self.N_B       
-            MSE_trainbatch_linear_LOSS_total = 0 # total train loss for all datasets
-           
-            for i in SoW_train_range: # dataset i 
-                self.optimizer.zero_grad()  
-                 # Init Training Batch tensors
+            MSE_trainbatch_linear_LOSS = torch.zeros([len(SoW_train_range)]) # loss for each dataset
+            
+            for i in SoW_train_range: # dataset i  
+                # Init Training Batch tensors
                 y_training_batch = torch.zeros([self.N_B, sysmdl_n, sysmdl_T]).to(self.device)
                 train_target_batch = torch.zeros([self.N_B, sysmdl_m, sysmdl_T]).to(self.device)
                 x_out_training_batch = torch.zeros([self.N_B, sysmdl_m, sysmdl_T]).to(self.device)
@@ -140,42 +140,37 @@ class Pipeline_cm:
                 # weights_cm.register_hook(self.print_grad) # debug
 
                 # Compute Training Loss
-                MSE_trainbatch_linear_LOSS = 0 # loss for each dataset
                 if(MaskOnState):
                     if self.args.randomLength:
                         dataset_index = 0
                         for index in n_e:# mask out the padded part when computing loss
                             MSE_train_linear_LOSS[dataset_index] = self.loss_fn(x_out_training_batch[dataset_index,mask,train_lengthMask[i][index]], train_target_batch[dataset_index,mask,train_lengthMask[index]])
                             dataset_index += 1
-                        MSE_trainbatch_linear_LOSS = torch.mean(MSE_train_linear_LOSS)
-                        MSE_trainbatch_linear_LOSS_total = MSE_trainbatch_linear_LOSS_total + MSE_trainbatch_linear_LOSS
+                        MSE_trainbatch_linear_LOSS[i] = torch.mean(MSE_train_linear_LOSS)
                     else:
-                        MSE_trainbatch_linear_LOSS = self.loss_fn(x_out_training_batch[:,mask,:], train_target_batch[:,mask,:])
-                        MSE_trainbatch_linear_LOSS_total = MSE_trainbatch_linear_LOSS_total + MSE_trainbatch_linear_LOSS
+                        MSE_trainbatch_linear_LOSS[i] = self.loss_fn(x_out_training_batch[:,mask,:], train_target_batch[:,mask,:])
                 else: # no mask on state
                     if self.args.randomLength:
                         dataset_index = 0
                         for index in n_e:# mask out the padded part when computing loss
                             MSE_train_linear_LOSS[dataset_index] = self.loss_fn(x_out_training_batch[dataset_index,:,train_lengthMask[i][index]], train_target_batch[dataset_index,:,train_lengthMask[index]])
                             dataset_index += 1
-                        MSE_trainbatch_linear_LOSS = torch.mean(MSE_train_linear_LOSS)
-                        MSE_trainbatch_linear_LOSS_total = MSE_trainbatch_linear_LOSS_total + MSE_trainbatch_linear_LOSS
+                        MSE_trainbatch_linear_LOSS[i] = torch.mean(MSE_train_linear_LOSS)
                     else: 
-                        MSE_trainbatch_linear_LOSS = self.loss_fn(x_out_training_batch, train_target_batch)
-                        MSE_trainbatch_linear_LOSS_total = MSE_trainbatch_linear_LOSS_total + MSE_trainbatch_linear_LOSS
-                
-                ##################
-                ### Optimizing ###
-                ##################
-                # FIXME: Can only optimize for each dataset one by one, since joint optimization cause in-place operation error
-                MSE_trainbatch_linear_LOSS.backward(retain_graph=True)
-                self.optimizer.step()
+                        MSE_trainbatch_linear_LOSS[i] = self.loss_fn(x_out_training_batch, train_target_batch)
+                        
 
-            # averaged dB Loss
-            MSE_trainbatch_linear_LOSS_average = MSE_trainbatch_linear_LOSS_total / len(SoW_train_range)
+            # averaged Loss over all datasets           
+            MSE_trainbatch_linear_LOSS_average = MSE_trainbatch_linear_LOSS.sum() / len(SoW_train_range)                         
             self.MSE_train_linear_epoch[ti] = MSE_trainbatch_linear_LOSS_average.item()
             self.MSE_train_dB_epoch[ti] = 10 * torch.log10(self.MSE_train_linear_epoch[ti])
 
+            ##################
+            ### Optimizing ###
+            ##################
+            MSE_trainbatch_linear_LOSS_average.backward(retain_graph=True)
+            self.optimizer.step()
+            
             ##################
             ### Validation ###
             ##################
@@ -237,8 +232,7 @@ class Pipeline_cm:
                     self.MSE_cv_dB_opt = self.MSE_cv_dB_epoch[ti]
                     self.MSE_cv_idx_opt = ti
                     
-                    torch.save(self.hnet, path_results + 'hnet_best-model.pt')
-                    torch.save(self.mnet, path_results + 'mnet_best-model.pt')
+                    torch.save(self.hnet.state_dict(), path_results + 'hnet_best-model.pt')
 
             ########################
             ### Training Summary ###

@@ -278,7 +278,9 @@ class SystemModel:
                     elif args.proc_noise_distri == 'exponential':
                         lambda_exp = torch.sqrt(1/self.q2)
                         exponential_dist = Exponential(torch.tensor(lambda_exp))
-                        eq = exponential_dist.sample((size,1,1))
+                        # Sample from the Exponential distribution
+                        eq = exponential_dist.sample((size,))
+                        eq = torch.reshape(eq, (size,1,1))
                     else:
                         raise ValueError('args.proc_noise_distri not supported!')
                     # Additive Process Noise
@@ -292,7 +294,8 @@ class SystemModel:
                     elif args.proc_noise_distri == 'exponential':
                         lambda_exp = torch.sqrt(1/self.q2)
                         exponential_dist = Exponential(lambda_exp * torch.ones([self.m])) # here we use the same lambda for all dimensions
-                        eq = exponential_dist.sample((size,self.m,1))
+                        eq = exponential_dist.sample((size,))
+                        eq = torch.reshape(eq, (size,self.m,1))
                     else:
                         raise ValueError('args.proc_noise_distri not supported!')
                     # Additive Process Noise
@@ -311,7 +314,8 @@ class SystemModel:
                     elif args.meas_noise_distri == 'exponential':
                         lambda_exp = torch.sqrt(1/self.r2)
                         exponential_dist = Exponential(torch.tensor(lambda_exp))
-                        er = exponential_dist.sample((size,1,1))
+                        er = exponential_dist.sample((size,))
+                        er = torch.reshape(er, (size,1,1))
                     else:
                         raise ValueError('args.meas_noise_distri not supported!')
                     # Additive Observation Noise
@@ -325,7 +329,8 @@ class SystemModel:
                     elif args.meas_noise_distri == 'exponential':
                         lambda_exp = torch.sqrt(1/self.r2)
                         exponential_dist = Exponential(lambda_exp * torch.ones([self.n])) # here we use the same lambda for all dimensions
-                        er = exponential_dist.sample((size,self.n,1))
+                        er = exponential_dist.sample((size,))
+                        er = torch.reshape(er, (size,self.n,1))
                     else:
                         raise ValueError('args.meas_noise_distri not supported!')       
                     # Additive Observation Noise

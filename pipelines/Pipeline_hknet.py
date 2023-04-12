@@ -86,8 +86,7 @@ class Pipeline_hknet:
             # Training Mode
             self.hnet.train()
             self.mnet.batch_size = self.N_B       
-            MSE_trainbatch_linear_LOSS_total = 0 # total train loss for all datasets
-           
+            MSE_trainbatch_linear_LOSS = torch.zeros([len(SoW_train_range)]) # loss for each dataset
             for i in SoW_train_range: # dataset i 
                 self.optimizer.zero_grad()  
                  # Init Training Batch tensors
@@ -135,48 +134,43 @@ class Pipeline_hknet:
                 self.mnet.InitSequence(train_init_batch, sysmdl_T)
                 
                 # Forward Computation
-                weights = self.hnet(train_input_tuple[i][1])
+                weights_knet = self.hnet(train_input_tuple[i][1])
                 for t in range(0, sysmdl_T):
-                    x_out_training_batch[:, :, t] = torch.squeeze(self.mnet(torch.unsqueeze(y_training_batch[:, :, t],2), weights=weights))
+                    x_out_training_batch[:, :, t] = torch.squeeze(self.mnet(torch.unsqueeze(y_training_batch[:, :, t],2), weights_knet=weights_knet))
                 
                 ### weights.register_hook(self.print_grad)
 
                 # Compute Training Loss
-                MSE_trainbatch_linear_LOSS = 0 # loss for each dataset
+               
                 if(MaskOnState):
                     if self.args.randomLength:
                         dataset_index = 0
                         for index in n_e:# mask out the padded part when computing loss
                             MSE_train_linear_LOSS[dataset_index] = self.loss_fn(x_out_training_batch[dataset_index,mask,train_lengthMask[i][index]], train_target_batch[dataset_index,mask,train_lengthMask[index]])
                             dataset_index += 1
-                        MSE_trainbatch_linear_LOSS = torch.mean(MSE_train_linear_LOSS)
-                        MSE_trainbatch_linear_LOSS_total = MSE_trainbatch_linear_LOSS_total + MSE_trainbatch_linear_LOSS
+                        MSE_trainbatch_linear_LOSS[i] = torch.mean(MSE_train_linear_LOSS)
                     else:
-                        MSE_trainbatch_linear_LOSS = self.loss_fn(x_out_training_batch[:,mask,:], train_target_batch[:,mask,:])
-                        MSE_trainbatch_linear_LOSS_total = MSE_trainbatch_linear_LOSS_total + MSE_trainbatch_linear_LOSS
+                        MSE_trainbatch_linear_LOSS[i] = self.loss_fn(x_out_training_batch[:,mask,:], train_target_batch[:,mask,:])
                 else: # no mask on state
                     if self.args.randomLength:
                         dataset_index = 0
                         for index in n_e:# mask out the padded part when computing loss
                             MSE_train_linear_LOSS[dataset_index] = self.loss_fn(x_out_training_batch[dataset_index,:,train_lengthMask[i][index]], train_target_batch[dataset_index,:,train_lengthMask[index]])
                             dataset_index += 1
-                        MSE_trainbatch_linear_LOSS = torch.mean(MSE_train_linear_LOSS)
-                        MSE_trainbatch_linear_LOSS_total = MSE_trainbatch_linear_LOSS_total + MSE_trainbatch_linear_LOSS
+                        MSE_trainbatch_linear_LOSS[i] = torch.mean(MSE_train_linear_LOSS)
                     else: 
-                        MSE_trainbatch_linear_LOSS = self.loss_fn(x_out_training_batch, train_target_batch)
-                        MSE_trainbatch_linear_LOSS_total = MSE_trainbatch_linear_LOSS_total + MSE_trainbatch_linear_LOSS
+                        MSE_trainbatch_linear_LOSS[i] = self.loss_fn(x_out_training_batch, train_target_batch)
                 
-                ##################
-                ### Optimizing ###
-                ##################
-                # FIXME: Can only optimize for each dataset one by one, since joint optimization cause in-place operation error
-                MSE_trainbatch_linear_LOSS.backward(retain_graph=True)
-                self.optimizer.step()
-
-            # averaged dB Loss
-            MSE_trainbatch_linear_LOSS_average = MSE_trainbatch_linear_LOSS_total / len(SoW_train_range)
+            # averaged Loss for all datasets           
+            MSE_trainbatch_linear_LOSS_average = MSE_trainbatch_linear_LOSS.sum() / len(SoW_train_range)                         
             self.MSE_train_linear_epoch[ti] = MSE_trainbatch_linear_LOSS_average.item()
             self.MSE_train_dB_epoch[ti] = 10 * torch.log10(self.MSE_train_linear_epoch[ti])
+
+            ##################
+            ### Optimizing ###
+            ##################
+            MSE_trainbatch_linear_LOSS_average.backward(retain_graph=True)
+            self.optimizer.step()
 
             ##################
             ### Validation ###
@@ -204,9 +198,9 @@ class Pipeline_hknet:
                     # Init Sequence                    
                     self.mnet.InitSequence(cv_init[i], sysmdl_T_test)                       
                     
-                    weights = self.hnet(cv_input_tuple[i][1])
+                    weights_knet = self.hnet(cv_input_tuple[i][1])
                     for t in range(0, sysmdl_T_test):
-                        x_out_cv_batch[self.N_CV*i:self.N_CV*(i+1), :, t] = torch.squeeze(self.mnet(torch.unsqueeze(cv_input_tuple[i][0][:, :, t],2), weights=weights))
+                        x_out_cv_batch[self.N_CV*i:self.N_CV*(i+1), :, t] = torch.squeeze(self.mnet(torch.unsqueeze(cv_input_tuple[i][0][:, :, t],2), weights_knet=weights_knet))
                     
                     # Compute CV Loss
                     MSE_cvbatch_linear_LOSS_i = MSE_cvbatch_linear_LOSS
@@ -325,9 +319,9 @@ class Pipeline_hknet:
             # Init Sequence
             self.mnet.InitSequence(test_init[i], sysmdl_T_test)               
             
-            weights = self.hnet(SoW_test)
+            weights_knet = self.hnet(SoW_test)
             for t in range(0, sysmdl_T_test):
-                x_out_test[current_idx:current_idx+self.N_T,:, t] = torch.squeeze(self.mnet(torch.unsqueeze(test_input[:,:, t],2), weights_knet=weights))
+                x_out_test[current_idx:current_idx+self.N_T,:, t] = torch.squeeze(self.mnet(torch.unsqueeze(test_input[:,:, t],2), weights_knet=weights_knet))
             
             end = time.time()
             t = end - start
