@@ -122,16 +122,37 @@ class KalmanNetNN(torch.nn.Module):
         
         if self.use_context_mod == True:
             self.cm_shape = {
+                'fc1_gain': [d_output_FC1],
+                'fc1_shift': [d_output_FC1],
+                'fc2_gain1': [d_hidden_FC2],
+                'fc2_shift1': [d_hidden_FC2],
+                # 'fc2_gain2': [d_output_FC2],
+                # 'fc2_shift2': [d_output_FC2],
+                'fc3_gain': [d_output_FC3],
+                'fc3_shift': [d_output_FC3],
+                'fc4_gain': [d_output_FC4],
+                'fc4_shift': [d_output_FC4],
+                'fc5_gain': [d_output_FC5],
+                'fc5_shift': [d_output_FC5],
+                'fc6_gain': [d_output_FC6],
+                'fc6_shift': [d_output_FC6],
+                'fc7_gain': [d_output_FC7],
+                'fc7_shift': [d_output_FC7],
                 'lstm_q_ih_gain': d_hidden_Q * 4,
                 'lstm_q_ih_shift': d_hidden_Q * 4,
                 'lstm_q_hh_gain': d_hidden_Q * 4,
                 'lstm_q_hh_shift': d_hidden_Q * 4,
+                'lstm_sigma_ih_gain': d_hidden_Sigma * 4,
+                'lstm_sigma_ih_shift': d_hidden_Sigma * 4,
+                'lstm_sigma_hh_gain': d_hidden_Sigma * 4,
+                'lstm_sigma_hh_shift': d_hidden_Sigma * 4,
                 'lstm_s_ih_gain': d_hidden_S * 4,
                 'lstm_s_ih_shift': d_hidden_S * 4,
                 'lstm_s_hh_gain': d_hidden_S * 4,
                 'lstm_s_hh_shift': d_hidden_S * 4}
             
-            n_params_cm = d_hidden_Q * 4 * 4 + d_hidden_S * 4 * 4
+            n_params_cm = d_output_FC1*2 + d_hidden_FC2*2 + d_output_FC3*2 + d_output_FC4*2 + d_output_FC5*2 + d_output_FC6*2 + d_output_FC7*2 + \
+                d_hidden_Q * 4 * 4 + d_hidden_S * 4 * 4 + d_hidden_Sigma * 4 * 4
         
         ### Calculate number of parameters in KNet ###
         n_params_fc = d_output_FC1*(d_input_FC1 +1)+d_hidden_FC2*(d_input_FC2 +1)+d_output_FC2*(d_hidden_FC2 +1)+d_output_FC3*(d_input_FC3 +1)+d_output_FC4*(d_input_FC4 +1)+d_output_FC5*(d_input_FC5 +1)+d_output_FC6*(d_input_FC6 +1)+d_output_FC7*(d_input_FC7 +1)
@@ -377,14 +398,13 @@ class KalmanNetNN(torch.nn.Module):
         ####################
         ### Forward Flow ###
         ####################
-        
-        # FC 5
-        in_FC5 = fw_evol_diff
-        out_FC5 = self.activation_func(F.linear(in_FC5, self.fc5_w, bias=self.fc5_b))
-
-        # Q-lstm
-        in_Q = out_FC5
         if self.use_context_mod == True:
+            # FC 5
+            in_FC5 = fw_evol_diff
+            out_FC5 = self.activation_func((F.linear(in_FC5, self.fc5_w, bias=self.fc5_b)).mul(self.fc5_gain) + self.fc5_shift)
+
+            # Q-lstm
+            in_Q = out_FC5     
             self.out_Q, self.h_Q = self.lstm_rnn_step(in_Q, (self.out_Q, self.h_Q), 
             [self.lstm_q_w_ih, # KNet weights
                 self.lstm_q_b_ih,
@@ -394,37 +414,33 @@ class KalmanNetNN(torch.nn.Module):
                 self.lstm_q_ih_shift,
                 self.lstm_q_hh_gain,
                 self.lstm_q_hh_shift])
-        else:
-            self.out_Q, self.h_Q = self.lstm_rnn_step(in_Q, (self.out_Q, self.h_Q), 
-            [self.lstm_q_w_ih,
-                self.lstm_q_b_ih,
-                self.lstm_q_w_hh,
-                self.lstm_q_b_hh])
+            
+            # FC 6
+            in_FC6 = fw_update_diff
+            out_FC6 = self.activation_func((F.linear(in_FC6, self.fc6_w, bias=self.fc6_b)).mul(self.fc6_gain) + self.fc6_shift)
 
-        # FC 6
-        in_FC6 = fw_update_diff
-        out_FC6 = self.activation_func(F.linear(in_FC6, self.fc6_w, bias=self.fc6_b))
+            # Sigma_lstm
+            in_Sigma = torch.cat((self.out_Q, out_FC6), 2)           
+            self.out_Sigma, self.h_Sigma = self.lstm_rnn_step(in_Sigma, (self.out_Sigma, self.h_Sigma), 
+            [self.lstm_sigma_w_ih, # KNet weights
+                self.lstm_sigma_b_ih,
+                self.lstm_sigma_w_hh,
+                self.lstm_sigma_b_hh],
+            cm_weights=[self.lstm_sigma_ih_gain, # CM weights
+                self.lstm_sigma_ih_shift,
+                self.lstm_sigma_hh_gain,
+                self.lstm_sigma_hh_shift])
+            
+            # FC 1
+            in_FC1 = self.out_Sigma
+            out_FC1 = self.activation_func((F.linear(in_FC1, self.fc1_w, bias=self.fc1_b)).mul(self.fc1_gain) + self.fc1_shift) 
 
-        # Sigma_lstm
-        in_Sigma = torch.cat((self.out_Q, out_FC6), 2)
-        self.out_Sigma, self.h_Sigma = self.lstm_rnn_step(in_Sigma, (self.out_Sigma, self.h_Sigma), 
-           [self.lstm_sigma_w_ih,
-            self.lstm_sigma_b_ih,
-            self.lstm_sigma_w_hh,
-            self.lstm_sigma_b_hh])
+            # FC 7
+            in_FC7 = torch.cat((obs_diff, obs_innov_diff), 2)
+            out_FC7 = self.activation_func((F.linear(in_FC7, self.fc7_w, bias=self.fc7_b)).mul(self.fc7_gain) + self.fc7_shift)
 
-        # FC 1
-        in_FC1 = self.out_Sigma
-        out_FC1 = self.activation_func(F.linear(in_FC1, self.fc1_w, bias=self.fc1_b))
-
-        # FC 7
-        in_FC7 = torch.cat((obs_diff, obs_innov_diff), 2)
-        out_FC7 = self.activation_func(F.linear(in_FC7, self.fc7_w, bias=self.fc7_b))
-
-
-        # S-lstm
-        in_S = torch.cat((out_FC1, out_FC7), 2)
-        if self.use_context_mod == True:
+            # S-lstm
+            in_S = torch.cat((out_FC1, out_FC7), 2)
             self.out_S, self.h_S = self.lstm_rnn_step(in_S, (self.out_S, self.h_S), 
             [self.lstm_s_w_ih, # KNet weights
                 self.lstm_s_b_ih,
@@ -434,33 +450,86 @@ class KalmanNetNN(torch.nn.Module):
                 self.lstm_s_ih_shift,
                 self.lstm_s_hh_gain,
                 self.lstm_s_hh_shift])
-        else:
+
+            # FC 2
+            in_FC2 = torch.cat((self.out_Sigma, self.out_S), 2)
+            out_FC2 = self.activation_func((F.linear(in_FC2, self.fc2_w1, bias=self.fc2_b1)).mul(self.fc2_gain1) + self.fc2_shift1) 
+            out_FC2 = F.linear(out_FC2, self.fc2_w2, bias=self.fc2_b2)
+
+            #####################
+            ### Backward Flow ###
+            #####################
+            # FC 3
+            in_FC3 = torch.cat((self.out_S, out_FC2), 2)
+            out_FC3 = self.activation_func((F.linear(in_FC3, self.fc3_w, bias=self.fc3_b)).mul(self.fc3_gain) + self.fc3_shift) 
+
+            # FC 4
+            in_FC4 = torch.cat((self.out_Sigma, out_FC3), 2)
+            out_FC4 = self.activation_func((F.linear(in_FC4, self.fc4_w, bias=self.fc4_b)).mul(self.fc4_gain) + self.fc4_shift)
+
+            # updating hidden state of the Sigma-lstm
+            self.h_Sigma = out_FC4
+        
+        else: # no context modulation
+             # FC 5
+            in_FC5 = fw_evol_diff
+            out_FC5 = self.activation_func(F.linear(in_FC5, self.fc5_w, bias=self.fc5_b))
+
+            # Q-lstm
+            in_Q = out_FC5     
+            self.out_Q, self.h_Q = self.lstm_rnn_step(in_Q, (self.out_Q, self.h_Q), 
+            [self.lstm_q_w_ih, 
+                self.lstm_q_b_ih,
+                self.lstm_q_w_hh,
+                self.lstm_q_b_hh])
+            
+            # FC 6
+            in_FC6 = fw_update_diff
+            out_FC6 = self.activation_func(F.linear(in_FC6, self.fc6_w, bias=self.fc6_b))
+
+            # Sigma_lstm
+            in_Sigma = torch.cat((self.out_Q, out_FC6), 2)           
+            self.out_Sigma, self.h_Sigma = self.lstm_rnn_step(in_Sigma, (self.out_Sigma, self.h_Sigma), 
+            [self.lstm_sigma_w_ih, 
+                self.lstm_sigma_b_ih,
+                self.lstm_sigma_w_hh,
+                self.lstm_sigma_b_hh])
+            
+            # FC 1
+            in_FC1 = self.out_Sigma
+            out_FC1 = self.activation_func(F.linear(in_FC1, self.fc1_w, bias=self.fc1_b))
+
+            # FC 7
+            in_FC7 = torch.cat((obs_diff, obs_innov_diff), 2)
+            out_FC7 = self.activation_func(F.linear(in_FC7, self.fc7_w, bias=self.fc7_b))
+
+            # S-lstm
+            in_S = torch.cat((out_FC1, out_FC7), 2)
             self.out_S, self.h_S = self.lstm_rnn_step(in_S, (self.out_S, self.h_S), 
             [self.lstm_s_w_ih,
                 self.lstm_s_b_ih,
                 self.lstm_s_w_hh,
                 self.lstm_s_b_hh])
 
-        # FC 2
-        in_FC2 = torch.cat((self.out_Sigma, self.out_S), 2)
-        out_FC2 = self.activation_func(F.linear(in_FC2, self.fc2_w1, bias=self.fc2_b1))
-        out_FC2 = F.linear(out_FC2, self.fc2_w2, bias=self.fc2_b2)
+            # FC 2
+            in_FC2 = torch.cat((self.out_Sigma, self.out_S), 2)
+            out_FC2 = self.activation_func(F.linear(in_FC2, self.fc2_w1, bias=self.fc2_b1))
+            out_FC2 = F.linear(out_FC2, self.fc2_w2, bias=self.fc2_b2)
 
-        #####################
-        ### Backward Flow ###
-        #####################
+            #####################
+            ### Backward Flow ###
+            #####################
+            # FC 3
+            in_FC3 = torch.cat((self.out_S, out_FC2), 2)
+            out_FC3 = self.activation_func(F.linear(in_FC3, self.fc3_w, bias=self.fc3_b))
 
-        # FC 3
-        in_FC3 = torch.cat((self.out_S, out_FC2), 2)
-        out_FC3 = self.activation_func(F.linear(in_FC3, self.fc3_w, bias=self.fc3_b))
+            # FC 4
+            in_FC4 = torch.cat((self.out_Sigma, out_FC3), 2)
+            out_FC4 = self.activation_func(F.linear(in_FC4, self.fc4_w, bias=self.fc4_b))
 
-        # FC 4
-        in_FC4 = torch.cat((self.out_Sigma, out_FC3), 2)
-        out_FC4 = self.activation_func(F.linear(in_FC4, self.fc4_w, bias=self.fc4_b))
-
-        # updating hidden state of the Sigma-lstm
-        self.h_Sigma = out_FC4
-
+            # updating hidden state of the Sigma-lstm
+            self.h_Sigma = out_FC4
+            
         return out_FC2
     ###############
     ### Forward ###
@@ -549,6 +618,24 @@ class KalmanNetNN(torch.nn.Module):
     
     def split_cm_weights(self, weights):
         weight_index = 0
+        # split gains and shifts for fc 1 - 7
+        def split_and_reshape_fc(weights, weight_index, shape_gain): # default: shape gain = shape shift
+            length_gain = shape_gain
+            length_shift = shape_gain
+            fc_gain = weights[weight_index:weight_index+length_gain].reshape(shape_gain)
+            weight_index = weight_index + length_gain
+            fc_shift = weights[weight_index:weight_index+length_shift].reshape(shape_gain)
+            weight_index = weight_index + length_shift
+            return fc_gain, fc_shift, weight_index
+        
+        self.fc1_gain, self.fc1_shift, weight_index = split_and_reshape_fc(weights, weight_index, self.cm_shape['fc1_gain'])
+        self.fc2_gain1, self.fc2_shift1, weight_index = split_and_reshape_fc(weights, weight_index, self.cm_shape['fc2_gain1'])
+        self.fc3_gain, self.fc3_shift, weight_index = split_and_reshape_fc(weights, weight_index, self.cm_shape['fc3_gain'])
+        self.fc4_gain, self.fc4_shift, weight_index = split_and_reshape_fc(weights, weight_index, self.cm_shape['fc4_gain'])
+        self.fc5_gain, self.fc5_shift, weight_index = split_and_reshape_fc(weights, weight_index, self.cm_shape['fc5_gain'])
+        self.fc6_gain, self.fc6_shift, weight_index = split_and_reshape_fc(weights, weight_index, self.cm_shape['fc6_gain'])
+        self.fc7_gain, self.fc7_shift, weight_index = split_and_reshape_fc(weights, weight_index, self.cm_shape['fc7_gain'])
+        
         # split gains and shifts for LSTM Q, S
         def split_and_reshape_cm(weights, weight_index, shape_gain): # default: shape gain = shape shift
             length_gain = shape_gain
@@ -561,6 +648,8 @@ class KalmanNetNN(torch.nn.Module):
         
         self.lstm_q_ih_gain, self.lstm_q_ih_shift, weight_index = split_and_reshape_cm(weights, weight_index, self.cm_shape['lstm_q_ih_gain'])
         self.lstm_q_hh_gain, self.lstm_q_hh_shift, weight_index = split_and_reshape_cm(weights, weight_index, self.cm_shape['lstm_q_hh_gain'])
+        self.lstm_sigma_ih_gain, self.lstm_sigma_ih_shift, weight_index = split_and_reshape_cm(weights, weight_index, self.cm_shape['lstm_sigma_ih_gain'])
+        self.lstm_sigma_hh_gain, self.lstm_sigma_hh_shift, weight_index = split_and_reshape_cm(weights, weight_index, self.cm_shape['lstm_sigma_hh_gain'])
         self.lstm_s_ih_gain, self.lstm_s_ih_shift, weight_index = split_and_reshape_cm(weights, weight_index, self.cm_shape['lstm_s_ih_gain'])
         self.lstm_s_hh_gain, self.lstm_s_hh_shift, weight_index = split_and_reshape_cm(weights, weight_index, self.cm_shape['lstm_s_hh_gain'])
         

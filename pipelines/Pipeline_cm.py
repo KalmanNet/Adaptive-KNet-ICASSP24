@@ -261,10 +261,11 @@ class Pipeline_cm:
             import wandb
         # Load model
         if load_model:
-            self.hnet = torch.load(load_model_path[0], map_location=self.device) 
+            hnet_model_weights = torch.load(load_model_path[0], map_location=self.device) 
         else:
-            self.hnet = torch.load(path_results+'hnet_best-model.pt', map_location=self.device)
-            
+            hnet_model_weights = torch.load(path_results+'hnet_best-model.pt', map_location=self.device)
+        self.hnet.load_state_dict(hnet_model_weights)
+        
         # dataset size    
         for i in SoW_test_range[:-1]:# except the last one
             assert(test_target_tuple[i][0].shape[1]==test_target_tuple[i+1][0].shape[1])
