@@ -68,17 +68,21 @@ args.wandb_switch = True
 if args.wandb_switch:
    import wandb
    wandb.init(project="HKNet_Linear")
-args.knet_trainable = True
+
 # training parameters for KNet
-args.n_steps = 5000
-args.n_batch = 100 
-args.lr = 1e-3
-args.wd = 1e-3
+args.knet_trainable = True
+args.in_mult_KNet = 40 # input dimension multiplier on the FC layers and LSTM layers of KNet
+# args.n_steps = 5000
+# args.n_batch = 100 
+# args.lr = 1e-3
+# args.wd = 1e-3
+
 # training parameters for Hypernet
-n_steps = 1000
+args.hnet_input_size = 1 # r2/q2 ratio 
+n_steps = 5000
 n_batch = 100 # will be multiplied by num of datasets
-lr = 1e-3
-wd = 1e-4
+lr = 1e-4
+wd = 1e-3
 
 ### True model ##################################################
 # SoW
@@ -92,6 +96,11 @@ SoW_test_range = list(range(len(SoW))) # last *** number of datasets are used fo
 # noise
 r2 = SoW[:, 2]
 q2 = SoW[:, 3]
+
+# Optional: change SoW to r/q ratio
+if args.hnet_input_size == 1:
+   SoW = r2/q2
+
 for i in range(len(SoW)):
    print(f"SoW of dataset {i}: ", SoW[i])
    print(f"r2 [linear] and q2 [linear] of dataset  {i}: ", r2[i], q2[i])
@@ -155,27 +164,27 @@ for i in range(len(SoW)):
 ### Hyper - KalmanNet Pipeline ###
 ##################################
 ### train and test KalmanNet on dataset 0
-print("KalmanNet pipeline start")
-KalmanNet_model = KNet_mnet()
-KalmanNet_model.NNBuild(sys_model[0], args)
-print("Number of trainable parameters for KalmanNet:",sum(p.numel() for p in KalmanNet_model.parameters() if p.requires_grad))
-## Train Neural Network
-KalmanNet_Pipeline = Pipeline_EKF(strTime, "KNet", "KalmanNet")
-KalmanNet_Pipeline.setssModel(sys_model[0])
-KalmanNet_Pipeline.setModel(KalmanNet_model)
-KalmanNet_Pipeline.setTrainingParams(args)
-KalmanNet_Pipeline.NNTrain_mixdatasets(SoW_train_range, sys_model, cv_input_list, cv_target_list, train_input_list, train_target_list, path_results,cv_init_list,train_init_list)
-## Test Neural Network on all datasets
-for i in range(len(SoW)):
-   test_input = test_input_list[i][0]
-   test_target = test_target_list[i][0]
-   test_init = test_init_list[i][0]  
-   test_lengthMask = None 
-   print(f"Dataset {i}") 
-   KalmanNet_Pipeline.NNTest(sys_model[i], test_input_list[i][0], test_target_list[i][0], path_results)
+# print("KalmanNet pipeline start")
+# KalmanNet_model = KNet_mnet()
+# KalmanNet_model.NNBuild(sys_model[0], args)
+# print("Number of trainable parameters for KalmanNet:",sum(p.numel() for p in KalmanNet_model.parameters() if p.requires_grad))
+# ## Train Neural Network
+# KalmanNet_Pipeline = Pipeline_EKF(strTime, "KNet", "KalmanNet")
+# KalmanNet_Pipeline.setssModel(sys_model[0])
+# KalmanNet_Pipeline.setModel(KalmanNet_model)
+# KalmanNet_Pipeline.setTrainingParams(args)
+# KalmanNet_Pipeline.NNTrain_mixdatasets(SoW_train_range, sys_model, cv_input_list, cv_target_list, train_input_list, train_target_list, path_results,cv_init_list,train_init_list)
+# ## Test Neural Network on all datasets
+# for i in range(len(SoW)):
+#    test_input = test_input_list[i][0]
+#    test_target = test_target_list[i][0]
+#    test_init = test_init_list[i][0]  
+#    test_lengthMask = None 
+#    print(f"Dataset {i}") 
+#    KalmanNet_Pipeline.NNTest(sys_model[i], test_input_list[i][0], test_target_list[i][0], path_results)
 
 # load frozen weights
-frozen_weights = torch.load(path_results + 'knet_best-model.pt', map_location=device) 
+frozen_weights = torch.load(path_results + 'knet_best-model_30dB_trainonall16_inmult=40.pt', map_location=device) 
 ### frozen KNet weights, train hypernet to generate CM weights on multiple datasets
 args.knet_trainable = False # frozen KNet weights
 args.use_context_mod = True # use CM

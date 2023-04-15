@@ -54,6 +54,10 @@ class Pipeline_cm:
     def NNTrain_mixdatasets(self, SoW_train_range, sys_model, cv_input_tuple, cv_target_tuple, train_input_tuple, train_target_tuple, path_results, \
         cv_init, train_init, MaskOnState=False, train_lengthMask=None,cv_lengthMask=None):
         
+        ### Optional: start training from previous checkpoint
+        hnet_model_weights = torch.load(path_results+'hnet_best-model.pt', map_location=self.device) 
+        self.hnet.load_state_dict(hnet_model_weights)
+        
         if self.args.wandb_switch: 
             import wandb
 
@@ -265,7 +269,7 @@ class Pipeline_cm:
         else:
             hnet_model_weights = torch.load(path_results+'hnet_best-model.pt', map_location=self.device)
         self.hnet.load_state_dict(hnet_model_weights)
-        
+
         # dataset size    
         for i in SoW_test_range[:-1]:# except the last one
             assert(test_target_tuple[i][0].shape[1]==test_target_tuple[i+1][0].shape[1])
