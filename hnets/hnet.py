@@ -38,6 +38,9 @@ class HyperNetwork(nn.Module):
         self.fc2.bias.data.fill_(0)
 
     def forward(self, SoW):
+        if SoW.dim() == 0: # input is just one number
+          SoW = SoW.unsqueeze(0)
+          
         x = self.fc1(SoW)
         x = torch.relu(x)
         x = x.unsqueeze(0).unsqueeze(0)

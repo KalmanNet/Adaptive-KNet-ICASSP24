@@ -73,7 +73,7 @@ def general_settings():
     ### HyperNetwork settings
     parser.add_argument('--hnet_input_size', type=int, default=4, metavar='hnet_input_size',
                         help='input dimension for HyperNetwork') # (distribution_R, distribution_Q, r2, q2)
-    parser.add_argument('--hnet_hidden_size_scale', type=int, default=10, metavar='hnet_hidden_size_scale',
+    parser.add_argument('--hnet_hidden_size_discount', type=int, default=10, metavar='discount factor on hnet hidden size',
                         help='hidden dimension divider for HyperNetwork')
 
     args = parser.parse_args()

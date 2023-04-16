@@ -17,7 +17,7 @@ from torch.distributions import Exponential
 
 class SystemModel:
 
-    def __init__(self, F, Q, H, R, T, T_test, SoW, prior_Q=None, prior_Sigma=None, prior_S=None):
+    def __init__(self, F, Q, H, R, T, T_test, q2, r2, prior_Q=None, prior_Sigma=None, prior_S=None):
 
         ####################
         ### Motion Model ###
@@ -25,6 +25,7 @@ class SystemModel:
         self.F = F
         self.m = self.F.size()[0]
         self.Q = Q
+        self.q2 = q2
 
         #########################
         ### Observation Model ###
@@ -32,6 +33,7 @@ class SystemModel:
         self.H = H
         self.n = self.H.size()[0]
         self.R = R
+        self.r2 = r2
 
         ################
         ### Sequence ###
@@ -39,13 +41,6 @@ class SystemModel:
         # Assign T
         self.T = T
         self.T_test = T_test
-
-        # Assign SoW
-        assert SoW.dim() == 1 # SoW should be a vector
-        self.SoW = SoW
-        self.r2 = 10**(SoW[2]/10)
-        self.q2 = 10**(SoW[3]/10)
-
 
         #########################
         ### Covariance Priors ###

@@ -105,7 +105,7 @@ for i in range(len(SoW)):
 # model
 sys_model = []
 for i in range(len(SoW)):
-   sys_model_i = SystemModel(F, q2[i]*Q_structure, H, r2[i]*R_structure, args.T, args.T_test, SoW[i])
+   sys_model_i = SystemModel(F, q2[i]*Q_structure, H, r2[i]*R_structure, args.T, args.T_test, q2[i], r2[i])
    sys_model_i.InitSequence(m1_0, m2_0)
    sys_model.append(sys_model_i)
 

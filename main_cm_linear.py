@@ -78,7 +78,7 @@ args.in_mult_KNet = 40 # input dimension multiplier on the FC layers and LSTM la
 # args.wd = 1e-3
 
 # training parameters for Hypernet
-args.hnet_input_size = 1 # r2/q2 ratio 
+args.hnet_input_size = 1 # q2/r2 ratio
 n_steps = 5000
 n_batch = 100 # will be multiplied by num of datasets
 lr = 1e-4
@@ -97,9 +97,10 @@ SoW_test_range = list(range(len(SoW))) # last *** number of datasets are used fo
 r2 = SoW[:, 2]
 q2 = SoW[:, 3]
 
-# Optional: change SoW to r/q ratio
+# Optional: change SoW to q2/r2 ratio
 if args.hnet_input_size == 1:
-   SoW = r2/q2
+   SoW = q2/r2
+   print("SoW: ", SoW)
 
 for i in range(len(SoW)):
    print(f"SoW of dataset {i}: ", SoW[i])
@@ -108,7 +109,7 @@ for i in range(len(SoW)):
 # model
 sys_model = []
 for i in range(len(SoW)):
-   sys_model_i = SystemModel(F, q2[i]*Q_structure, H, r2[i]*R_structure, args.T, args.T_test, SoW[i])
+   sys_model_i = SystemModel(F, q2[i]*Q_structure, H, r2[i]*R_structure, args.T, args.T_test, q2[i], r2[i])
    sys_model_i.InitSequence(m1_0, m2_0)
    sys_model.append(sys_model_i)
 
