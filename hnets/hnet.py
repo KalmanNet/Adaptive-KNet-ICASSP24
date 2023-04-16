@@ -16,7 +16,7 @@ class HyperNetwork(nn.Module):
         else:
             self.device = torch.device('cpu')
 
-        self.hidden_size = int(output_size / args.hnet_hidden_size_scale)
+        self.hidden_size = int(output_size / args.hnet_hidden_size_discount)
 
         self.fc1 = nn.Linear(args.hnet_input_size, self.hidden_size).to(self.device)
         self.gru = nn.GRU(self.hidden_size, self.hidden_size).to(self.device)

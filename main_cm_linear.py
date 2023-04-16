@@ -73,15 +73,15 @@ if args.wandb_switch:
 args.knet_trainable = True
 args.in_mult_KNet = 40 # input dimension multiplier on the FC layers and LSTM layers of KNet
 # args.n_steps = 5000
-# args.n_batch = 100 
+# args.n_batch = 64 
 # args.lr = 1e-3
 # args.wd = 1e-3
 
 # training parameters for Hypernet
-args.hnet_input_size = 1 # q2/r2 ratio
+args.hnet_input_size = 2 # [shift 0/gain 1, q2/r2 ratio]
 n_steps = 5000
-n_batch = 100 # will be multiplied by num of datasets
-lr = 1e-4
+n_batch = 64  # will be multiplied by num of datasets
+lr = 1e-5
 wd = 1e-3
 
 ### True model ##################################################
@@ -98,8 +98,10 @@ r2 = SoW[:, 2]
 q2 = SoW[:, 3]
 
 # Optional: change SoW to q2/r2 ratio
-if args.hnet_input_size == 1:
-   SoW = q2/r2
+if args.hnet_input_size == 2:
+   SoW = torch.zeros(len(SoW), 3)
+   SoW[:, 1] = torch.ones(len(SoW))
+   SoW[:, 2] = q2/r2
    print("SoW: ", SoW)
 
 for i in range(len(SoW)):
@@ -151,14 +153,14 @@ for i in range(len(SoW)):
 ##############################
 ### Evaluate Kalman Filter ###
 ##############################
-print("Evaluate Kalman Filter True")
-for i in range(len(SoW)):
-   test_input = test_input_list[i][0]
-   test_target = test_target_list[i][0]
-   test_init = test_init_list[i][0]  
-   test_lengthMask = None 
-   print(f"Dataset {i}") 
-   [MSE_KF_linear_arr, MSE_KF_linear_avg, MSE_KF_dB_avg, KF_out] = KFTest(args, sys_model[i], test_input, test_target, test_lengthMask=test_lengthMask)
+# print("Evaluate Kalman Filter True")
+# for i in range(len(SoW)):
+#    test_input = test_input_list[i][0]
+#    test_target = test_target_list[i][0]
+#    test_init = test_init_list[i][0]  
+#    test_lengthMask = None 
+#    print(f"Dataset {i}") 
+#    [MSE_KF_linear_arr, MSE_KF_linear_avg, MSE_KF_dB_avg, KF_out] = KFTest(args, sys_model[i], test_input, test_target, test_lengthMask=test_lengthMask)
 
 
 ##################################
@@ -199,6 +201,10 @@ print("Build HNet and KNet")
 KalmanNet_model = KNet_mnet()
 cm_weight_size = KalmanNet_model.NNBuild(sys_model[0], args, frozen_weights=frozen_weights)
 print("Number of CM parameters:", cm_weight_size)
+
+if args.hnet_input_size == 2: # Split into gain and shift
+   cm_weight_size = torch.tensor([cm_weight_size / 2]).int().item()
+
 HyperNet_model = HyperNetwork(args, cm_weight_size)
 weight_size_hnet = sum(p.numel() for p in HyperNet_model.parameters() if p.requires_grad)
 print("Number of parameters for HyperNet:", weight_size_hnet)

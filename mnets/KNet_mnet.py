@@ -534,16 +534,19 @@ class KalmanNetNN(torch.nn.Module):
     ###############
     ### Forward ###
     ###############
-    def forward(self, y, weights_knet = None, weights_cm = None):
+    def forward(self, y, weights_knet = None, weights_cm_gain = None, weights_cm_shift = None):
         y = y.to(self.device)
 
         # case: hypernet generate CM weights
-        if weights_cm is not None: 
+        if weights_cm_gain is not None or weights_cm_shift is not None:
+            assert(weights_cm_gain is not None and weights_cm_shift is not None)# CM gains and shifts should be provided together
             assert(weights_knet is None) # KNet is initialized with frozen weights
             assert(self.use_context_mod == True) # if CM weights are provided, then CM should be used            
             ### load CM weights
-            weights_cm = weights_cm.to(self.device)
-            self.split_cm_weights(weights_cm)
+            weights_cm_gain = weights_cm_gain.to(self.device)
+            weights_cm_shift = weights_cm_shift.to(self.device)
+            self.split_cm_weights_gain(weights_cm_gain)
+            self.split_cm_weights_shift(weights_cm_shift)
 
         # case: hypernet only generate KNet weights
         elif weights_knet is not None: 
@@ -616,43 +619,68 @@ class KalmanNetNN(torch.nn.Module):
         self.lstm_sigma_w_ih, self.lstm_sigma_b_ih, self.lstm_sigma_w_hh, self.lstm_sigma_b_hh, weight_index = split_and_reshape_lstm(weights, weight_index, self.lstm_shape['lstm_sigma_w_ih'], self.lstm_shape['lstm_sigma_b_ih'], self.lstm_shape['lstm_sigma_w_hh'], self.lstm_shape['lstm_sigma_b_hh'])
         self.lstm_s_w_ih, self.lstm_s_b_ih, self.lstm_s_w_hh, self.lstm_s_b_hh, weight_index = split_and_reshape_lstm(weights, weight_index, self.lstm_shape['lstm_s_w_ih'], self.lstm_shape['lstm_s_b_ih'], self.lstm_shape['lstm_s_w_hh'], self.lstm_shape['lstm_s_b_hh'])
     
-    def split_cm_weights(self, weights):
+    def split_cm_weights_gain(self, weights):
         weight_index = 0
-        # split gains and shifts for fc 1 - 7
-        def split_and_reshape_fc(weights, weight_index, shape_gain): # default: shape gain = shape shift
+        # split gains for fc 1 - 7
+        def split_and_reshape_fc(weights, weight_index, shape_gain): 
             length_gain = shape_gain
-            length_shift = shape_gain
             fc_gain = weights[weight_index:weight_index+length_gain].reshape(shape_gain)
             weight_index = weight_index + length_gain
-            fc_shift = weights[weight_index:weight_index+length_shift].reshape(shape_gain)
-            weight_index = weight_index + length_shift
-            return fc_gain, fc_shift, weight_index
+            return fc_gain, weight_index
         
-        self.fc1_gain, self.fc1_shift, weight_index = split_and_reshape_fc(weights, weight_index, self.cm_shape['fc1_gain'])
-        self.fc2_gain1, self.fc2_shift1, weight_index = split_and_reshape_fc(weights, weight_index, self.cm_shape['fc2_gain1'])
-        self.fc3_gain, self.fc3_shift, weight_index = split_and_reshape_fc(weights, weight_index, self.cm_shape['fc3_gain'])
-        self.fc4_gain, self.fc4_shift, weight_index = split_and_reshape_fc(weights, weight_index, self.cm_shape['fc4_gain'])
-        self.fc5_gain, self.fc5_shift, weight_index = split_and_reshape_fc(weights, weight_index, self.cm_shape['fc5_gain'])
-        self.fc6_gain, self.fc6_shift, weight_index = split_and_reshape_fc(weights, weight_index, self.cm_shape['fc6_gain'])
-        self.fc7_gain, self.fc7_shift, weight_index = split_and_reshape_fc(weights, weight_index, self.cm_shape['fc7_gain'])
+        self.fc1_gain, weight_index = split_and_reshape_fc(weights, weight_index, self.cm_shape['fc1_gain'])
+        self.fc2_gain1, weight_index = split_and_reshape_fc(weights, weight_index, self.cm_shape['fc2_gain1'])
+        self.fc3_gain, weight_index = split_and_reshape_fc(weights, weight_index, self.cm_shape['fc3_gain'])
+        self.fc4_gain, weight_index = split_and_reshape_fc(weights, weight_index, self.cm_shape['fc4_gain'])
+        self.fc5_gain, weight_index = split_and_reshape_fc(weights, weight_index, self.cm_shape['fc5_gain'])
+        self.fc6_gain, weight_index = split_and_reshape_fc(weights, weight_index, self.cm_shape['fc6_gain'])
+        self.fc7_gain, weight_index = split_and_reshape_fc(weights, weight_index, self.cm_shape['fc7_gain'])
         
-        # split gains and shifts for LSTM Q, S
-        def split_and_reshape_cm(weights, weight_index, shape_gain): # default: shape gain = shape shift
+        # split gains for LSTM Q, Sigma, S
+        def split_and_reshape_cm(weights, weight_index, shape_gain):
             length_gain = shape_gain
-            length_shift = shape_gain
             cm_gain = weights[weight_index:weight_index+length_gain].reshape(shape_gain)
             weight_index = weight_index + length_gain
-            cm_shift = weights[weight_index:weight_index+length_shift].reshape(shape_gain)
+            return cm_gain, weight_index
+        
+        self.lstm_q_ih_gain, weight_index = split_and_reshape_cm(weights, weight_index, self.cm_shape['lstm_q_ih_gain'])
+        self.lstm_q_hh_gain, weight_index = split_and_reshape_cm(weights, weight_index, self.cm_shape['lstm_q_hh_gain'])
+        self.lstm_sigma_ih_gain, weight_index = split_and_reshape_cm(weights, weight_index, self.cm_shape['lstm_sigma_ih_gain'])
+        self.lstm_sigma_hh_gain, weight_index = split_and_reshape_cm(weights, weight_index, self.cm_shape['lstm_sigma_hh_gain'])
+        self.lstm_s_ih_gain, weight_index = split_and_reshape_cm(weights, weight_index, self.cm_shape['lstm_s_ih_gain'])
+        self.lstm_s_hh_gain, weight_index = split_and_reshape_cm(weights, weight_index, self.cm_shape['lstm_s_hh_gain'])
+    
+    def split_cm_weights_shift(self, weights):
+        weight_index = 0
+        # split shifts for fc 1 - 7
+        def split_and_reshape_fc(weights, weight_index, shape_shift): 
+            length_shift = shape_shift
+            fc_shift = weights[weight_index:weight_index+length_shift].reshape(shape_shift)
             weight_index = weight_index + length_shift
-            return cm_gain, cm_shift, weight_index
+            return fc_shift, weight_index
         
-        self.lstm_q_ih_gain, self.lstm_q_ih_shift, weight_index = split_and_reshape_cm(weights, weight_index, self.cm_shape['lstm_q_ih_gain'])
-        self.lstm_q_hh_gain, self.lstm_q_hh_shift, weight_index = split_and_reshape_cm(weights, weight_index, self.cm_shape['lstm_q_hh_gain'])
-        self.lstm_sigma_ih_gain, self.lstm_sigma_ih_shift, weight_index = split_and_reshape_cm(weights, weight_index, self.cm_shape['lstm_sigma_ih_gain'])
-        self.lstm_sigma_hh_gain, self.lstm_sigma_hh_shift, weight_index = split_and_reshape_cm(weights, weight_index, self.cm_shape['lstm_sigma_hh_gain'])
-        self.lstm_s_ih_gain, self.lstm_s_ih_shift, weight_index = split_and_reshape_cm(weights, weight_index, self.cm_shape['lstm_s_ih_gain'])
-        self.lstm_s_hh_gain, self.lstm_s_hh_shift, weight_index = split_and_reshape_cm(weights, weight_index, self.cm_shape['lstm_s_hh_gain'])
+        self.fc1_shift, weight_index = split_and_reshape_fc(weights, weight_index, self.cm_shape['fc1_shift'])
+        self.fc2_shift1, weight_index = split_and_reshape_fc(weights, weight_index, self.cm_shape['fc2_shift1'])
+        self.fc3_shift, weight_index = split_and_reshape_fc(weights, weight_index, self.cm_shape['fc3_shift'])
+        self.fc4_shift, weight_index = split_and_reshape_fc(weights, weight_index, self.cm_shape['fc4_shift'])
+        self.fc5_shift, weight_index = split_and_reshape_fc(weights, weight_index, self.cm_shape['fc5_shift'])
+        self.fc6_shift, weight_index = split_and_reshape_fc(weights, weight_index, self.cm_shape['fc6_shift'])
+        self.fc7_shift, weight_index = split_and_reshape_fc(weights, weight_index, self.cm_shape['fc7_shift'])
         
+        # split shifts for LSTM Q, Sigma, S
+        def split_and_reshape_cm(weights, weight_index, shape_shift):
+            length_shift = shape_shift
+            cm_shift = weights[weight_index:weight_index+length_shift].reshape(shape_shift)
+            weight_index = weight_index + length_shift
+            return cm_shift, weight_index
+        
+        self.lstm_q_ih_shift, weight_index = split_and_reshape_cm(weights, weight_index, self.cm_shape['lstm_q_ih_shift'])
+        self.lstm_q_hh_shift, weight_index = split_and_reshape_cm(weights, weight_index, self.cm_shape['lstm_q_hh_shift'])
+        self.lstm_sigma_ih_shift, weight_index = split_and_reshape_cm(weights, weight_index, self.cm_shape['lstm_sigma_ih_shift'])
+        self.lstm_sigma_hh_shift, weight_index = split_and_reshape_cm(weights, weight_index, self.cm_shape['lstm_sigma_hh_shift'])
+        self.lstm_s_ih_shift, weight_index = split_and_reshape_cm(weights, weight_index, self.cm_shape['lstm_s_ih_shift'])
+        self.lstm_s_hh_shift, weight_index = split_and_reshape_cm(weights, weight_index, self.cm_shape['lstm_s_hh_shift'])
+           
     ########################
     ### LSTM computation ###
     ########################    

@@ -108,7 +108,7 @@ class Pipeline_cm:
                 assert torch.allclose(train_input_tuple[i][1], train_target_tuple[i][1]) 
                 self.mnet.UpdateSystemDynamics(sys_model[i])
                 # req grad
-                train_input_tuple[i][1].requires_grad = True # SoW_train
+                # train_input_tuple[i][1].requires_grad = True # SoW_train
                 train_input_tuple[i][0].requires_grad = True # input y
                 train_target_tuple[i][0].requires_grad = True # target x
                 train_init[i].requires_grad = True # init x0
@@ -137,9 +137,11 @@ class Pipeline_cm:
                 self.mnet.InitSequence(train_init_batch, sysmdl_T)
                 
                 # Forward Computation
-                weights_cm = self.hnet(train_input_tuple[i][1])
+                weights_cm_shift = self.hnet(train_input_tuple[i][1][[0,2]]) # 0 for shift
+                weights_cm_gain = self.hnet(train_input_tuple[i][1][[0,2]])# 1 for gain
+
                 for t in range(0, sysmdl_T):
-                    x_out_training_batch[:, :, t] = torch.squeeze(self.mnet(torch.unsqueeze(y_training_batch[:, :, t],2), weights_cm=weights_cm))
+                    x_out_training_batch[:, :, t] = torch.squeeze(self.mnet(torch.unsqueeze(y_training_batch[:, :, t],2), weights_cm_gain=weights_cm_gain, weights_cm_shift=weights_cm_shift))
                 
                 # weights_cm.register_hook(self.print_grad) # debug
 
@@ -201,9 +203,11 @@ class Pipeline_cm:
                     # Init Sequence                    
                     self.mnet.InitSequence(cv_init[i], sysmdl_T_test)                       
                     
-                    weights_cm = self.hnet(cv_input_tuple[i][1])
+                    weights_cm_shift = self.hnet(cv_input_tuple[i][1][[0,2]]) # 0 for shift
+                    weights_cm_gain = self.hnet(cv_input_tuple[i][1][[0,2]])# 1 for gain
+
                     for t in range(0, sysmdl_T_test):
-                        x_out_cv_batch[self.N_CV*i:self.N_CV*(i+1), :, t] = torch.squeeze(self.mnet(torch.unsqueeze(cv_input_tuple[i][0][:, :, t],2), weights_cm=weights_cm))
+                        x_out_cv_batch[self.N_CV*i:self.N_CV*(i+1), :, t] = torch.squeeze(self.mnet(torch.unsqueeze(cv_input_tuple[i][0][:, :, t],2), weights_cm_gain=weights_cm_gain, weights_cm_shift=weights_cm_shift))
                     
                     # Compute CV Loss
                     MSE_cvbatch_linear_LOSS_i = MSE_cvbatch_linear_LOSS
@@ -318,9 +322,11 @@ class Pipeline_cm:
             # Init Sequence
             self.mnet.InitSequence(test_init[i], sysmdl_T_test)               
             
-            weights_cm = self.hnet(SoW_test)
+            weights_cm_shift = self.hnet(test_input_tuple[i][1][[0,2]]) # 0 for shift
+            weights_cm_gain = self.hnet(test_input_tuple[i][1][[0,2]])# 1 for gain
+            
             for t in range(0, sysmdl_T_test):
-                x_out_test[current_idx:current_idx+self.N_T,:, t] = torch.squeeze(self.mnet(torch.unsqueeze(test_input[:,:, t],2), weights_cm=weights_cm))
+                x_out_test[current_idx:current_idx+self.N_T,:, t] = torch.squeeze(self.mnet(torch.unsqueeze(test_input[:,:, t],2), weights_cm_gain=weights_cm_gain, weights_cm_shift=weights_cm_shift))
             
             end = time.time()
             t = end - start
