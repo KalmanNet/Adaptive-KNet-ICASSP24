@@ -89,7 +89,7 @@ class Pipeline_cm:
             # Training Mode
             self.hnet.train()
             self.mnet.batch_size = self.N_B       
-            MSE_trainbatch_linear_LOSS = torch.zeros([len(SoW_train_range)]) # loss for each dataset
+            MSE_trainbatch_linear_LOSS = torch.zeros([len(train_target_tuple)]) # loss for each dataset
             
             for i in SoW_train_range: # dataset i  
                 # Init Training Batch tensors
@@ -188,15 +188,17 @@ class Pipeline_cm:
             # data size
             self.N_CV = len(cv_input_tuple[i][0])
             sysmdl_T_test = cv_input_tuple[i][0].shape[2] 
-            if self.args.randomLength:
-                MSE_cv_linear_LOSS = torch.zeros([self.N_CV*len(SoW_train_range)])
-            # Init Output
-            x_out_cv_batch = torch.empty([self.N_CV*len(SoW_train_range), sysmdl_m, sysmdl_T_test]).to(self.device)                   
+            # loss for each dataset
+            MSE_cvbatch_linear_LOSS = torch.zeros([len(cv_target_tuple)])                  
             # Update Batch Size for mnet
             self.mnet.batch_size = self.N_CV 
 
             with torch.no_grad():
                 for i in SoW_train_range: # dataset i 
+                    if self.args.randomLength:
+                        MSE_cv_linear_LOSS = torch.zeros([self.N_CV])
+                    # Init Output
+                    x_out_cv_batch = torch.empty([self.N_CV, sysmdl_m, sysmdl_T_test]).to(self.device)
                     # Init Hidden State
                     self.hnet.init_hidden()
                     self.mnet.init_hidden()
@@ -207,32 +209,31 @@ class Pipeline_cm:
                     weights_cm_gain = self.hnet(cv_input_tuple[i][1][[0,2]])# 1 for gain
 
                     for t in range(0, sysmdl_T_test):
-                        x_out_cv_batch[self.N_CV*i:self.N_CV*(i+1), :, t] = torch.squeeze(self.mnet(torch.unsqueeze(cv_input_tuple[i][0][:, :, t],2), weights_cm_gain=weights_cm_gain, weights_cm_shift=weights_cm_shift))
+                        x_out_cv_batch[:, :, t] = torch.squeeze(self.mnet(torch.unsqueeze(cv_input_tuple[i][0][:, :, t],2), weights_cm_gain=weights_cm_gain, weights_cm_shift=weights_cm_shift))
                     
                     # Compute CV Loss
-                    MSE_cvbatch_linear_LOSS_i = MSE_cvbatch_linear_LOSS
                     if(MaskOnState):
                         if self.args.randomLength:
                             for index in range(self.N_CV):
-                                MSE_cv_linear_LOSS[index+self.N_CV*i] = self.loss_fn(x_out_cv_batch[index+self.N_CV*i,mask,cv_lengthMask[i][index]], cv_target_tuple[i][0][index,mask,cv_lengthMask[index]])
-                            MSE_cvbatch_linear_LOSS = MSE_cvbatch_linear_LOSS + torch.mean(MSE_cv_linear_LOSS[self.N_CV*i:self.N_CV*(i+1)])
+                                MSE_cv_linear_LOSS[index] = self.loss_fn(x_out_cv_batch[index,mask,cv_lengthMask[i][index]], cv_target_tuple[i][0][index,mask,cv_lengthMask[index]])
+                            MSE_cvbatch_linear_LOSS[i] = torch.mean(MSE_cv_linear_LOSS)
                         else:          
-                            MSE_cvbatch_linear_LOSS = MSE_cvbatch_linear_LOSS + self.loss_fn(x_out_cv_batch[self.N_CV*i:self.N_CV*(i+1),mask,:], cv_target_tuple[i][0][:,mask,:])
+                            MSE_cvbatch_linear_LOSS[i] = self.loss_fn(x_out_cv_batch[:,mask,:], cv_target_tuple[i][0][:,mask,:])
                     else:
                         if self.args.randomLength:
                             for index in range(self.N_CV):
-                                MSE_cv_linear_LOSS[index+self.N_CV*i] = self.loss_fn(x_out_cv_batch[index+self.N_CV*i,:,cv_lengthMask[i][index]], cv_target_tuple[i][0][index,:,cv_lengthMask[index]])
-                            MSE_cvbatch_linear_LOSS = MSE_cvbatch_linear_LOSS + torch.mean(MSE_cv_linear_LOSS[self.N_CV*i:self.N_CV*(i+1)])
+                                MSE_cv_linear_LOSS[index] = self.loss_fn(x_out_cv_batch[index,:,cv_lengthMask[i][index]], cv_target_tuple[i][0][index,:,cv_lengthMask[index]])
+                            MSE_cvbatch_linear_LOSS[i] = torch.mean(MSE_cv_linear_LOSS)
                         else:
-                            MSE_cvbatch_linear_LOSS = MSE_cvbatch_linear_LOSS + self.loss_fn(x_out_cv_batch[self.N_CV*i:self.N_CV*(i+1)], cv_target_tuple[i][0])
+                            MSE_cvbatch_linear_LOSS[i] = self.loss_fn(x_out_cv_batch, cv_target_tuple[i][0])
                     
-                    # Print loss for each dataset
-                    MSE_cvbatch_linear_LOSS_i = MSE_cvbatch_linear_LOSS - MSE_cvbatch_linear_LOSS_i
-                    MSE_cvbatch_dB_LOSS_i = 10 * math.log10(MSE_cvbatch_linear_LOSS_i.item())
+                # Print loss for each dataset in train range
+                for i in SoW_train_range:
+                    MSE_cvbatch_dB_LOSS_i = 10 * math.log10(MSE_cvbatch_linear_LOSS[i].item())
                     print(f"MSE Validation on dataset {i}:", MSE_cvbatch_dB_LOSS_i,"[dB]")
                 
                 # averaged dB Loss
-                MSE_cvbatch_linear_LOSS = MSE_cvbatch_linear_LOSS / len(SoW_train_range)
+                MSE_cvbatch_linear_LOSS = MSE_cvbatch_linear_LOSS.sum() / len(SoW_train_range)
                 self.MSE_cv_linear_epoch[ti] = MSE_cvbatch_linear_LOSS.item()
                 self.MSE_cv_dB_epoch[ti] = 10 * torch.log10(self.MSE_cv_linear_epoch[ti])
                 # save model with best averaged loss on all datasets

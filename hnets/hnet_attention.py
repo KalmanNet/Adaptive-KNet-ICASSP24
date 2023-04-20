@@ -56,3 +56,17 @@ position = torch.randint(0, position_dim, (batch_size,))
 hypernetwork = HyperNetwork(output_size=output_size)
 output = hypernetwork(context, position)
 print(output.shape)
+
+
+# if __name__ == '__main__':
+#     import sys
+#     sys.path.append('C://Users//xiaoy//Documents//learning//ETH_master//semester5//Thesis//codes//Hyper-KalmanNet')
+#     import simulations.config as config
+    
+#     args = config.general_settings()
+#     hnet = HyperNetwork(args, 100)
+#     Q_t = torch.tensor([10]).type(torch.float)
+#     R_t = torch.tensor([10]).type(torch.float)
+#     hnet.init_hidden()
+#     weights = hnet(Q_t, R_t)
+#     print(weights.shape)

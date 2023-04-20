@@ -1,6 +1,6 @@
 """
 HyperNetwork class
-architecture 1: FC - GRU - FC
+architecture: FC - GRU - FC
 """
 
 import torch
@@ -57,16 +57,3 @@ class HyperNetwork(nn.Module):
         hidden = weight.new(1, 1, self.fc1.out_features).zero_()
         self.hgru = hidden.data
 
-
-# if __name__ == '__main__':
-#     import sys
-#     sys.path.append('C://Users//xiaoy//Documents//learning//ETH_master//semester5//Thesis//codes//Hyper-KalmanNet')
-#     import simulations.config as config
-    
-#     args = config.general_settings()
-#     hnet = HyperNetwork(args, 100)
-#     Q_t = torch.tensor([10]).type(torch.float)
-#     R_t = torch.tensor([10]).type(torch.float)
-#     hnet.init_hidden()
-#     weights = hnet(Q_t, R_t)
-#     print(weights.shape)

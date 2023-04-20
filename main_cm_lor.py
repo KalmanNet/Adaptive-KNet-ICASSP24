@@ -68,19 +68,32 @@ args.wd = 1e-3
 args.CompositionLoss = True
 args.alpha = 0.5
 # training parameters for Hypernet
-n_steps = 1000
-n_batch = 100 # will be multiplied by num of datasets
+args.hnet_input_size = 2 # [shift 0/gain 1, q2/r2 ratio]
+n_steps = 5000
+n_batch = 512 # will be multiplied by num of datasets
 lr = 1e-3
 wd = 1e-4
 
 ### True model
 # SoW
-SoW = torch.tensor([[0,0,1,0.1], [0,0,1,0.4], [0,0,1,0.7], [0,0,1,1], [0,0,1,0.15], [0,0,1,0.55], [0,0,1,0.9]])
-SoW_train_range = [0,1,2,3] # first *** number of datasets are used for training
-SoW_test_range = [0,1,2,3,4,5,6] # last *** number of datasets are used for testing
+SoW = torch.tensor([[0,0,1,1], [0,0,1,0.1], [0,0,1,0.01], [0,0,1,0.001],
+                    [0,0,0.1,1], [0,0,0.1,0.1], [0,0,0.1,0.01], [0,0,0.1,0.001],
+                    [0,0,0.01,1], [0,0,0.01,0.1], [0,0,0.01,0.01], [0,0,0.01,0.001],
+                    [0,0,0.001,1], [0,0,0.001,0.1], [0,0,0.001,0.01], [0,0,0.001,0.001]])
+SoW_train_range = list(range(len(SoW))) # first *** number of datasets are used for training
+print("SoW_train_range: ", SoW_train_range)
+SoW_test_range = list(range(len(SoW))) # last *** number of datasets are used for testing
 # noise
 r2 = SoW[:, 2]
 q2 = SoW[:, 3]
+
+# Optional: change SoW to q2/r2 ratio
+if args.hnet_input_size == 2:
+   SoW = torch.zeros(len(SoW), 3)
+   SoW[:, 1] = torch.ones(len(SoW))
+   SoW[:, 2] = q2/r2
+   print("SoW: ", SoW)
+
 for i in range(len(SoW)):
    print(f"SoW of dataset {i}: ", SoW[i])
    print(f"r2 [linear] and q2 [linear] of dataset  {i}: ", r2[i], q2[i])
@@ -93,7 +106,7 @@ for i in range(len(SoW)):
 
 ### paths 
 path_results = 'simulations/lorenz_attractor/results/'
-DatafolderName = 'data/lorenz_attractor/'
+DatafolderName = 'data/lorenz_attractor/30dB/'
 # traj_resultName = ['traj_lorDT_NLobs_rq3030_T20.pt']
 dataFileName = []
 for i in range(len(SoW)):
@@ -132,13 +145,13 @@ for i in range(len(SoW)):
 ### Evaluate Filters ###
 ########################
 # ### Evaluate EKF full
-print("Evaluate EKF full")
-for i in range(len(SoW)):
-   test_input = test_input_list[i][0]
-   test_target = test_target_list[i][0]
-   test_init = test_init_list[i][0]
-   print(f"Dataset {i}")
-   [MSE_EKF_linear_arr, MSE_EKF_linear_avg, MSE_EKF_dB_avg, EKF_KG_array, EKF_out] = EKFTest(args, sys_model[i], test_input, test_target)
+# print("Evaluate EKF full")
+# for i in range(len(SoW)):
+#    test_input = test_input_list[i][0]
+#    test_target = test_target_list[i][0]
+#    test_init = test_init_list[i][0]
+#    print(f"Dataset {i}")
+#    [MSE_EKF_linear_arr, MSE_EKF_linear_avg, MSE_EKF_dB_avg, EKF_KG_array, EKF_out] = EKFTest(args, sys_model[i], test_input, test_target)
 
 # ### Save trajectories
 # trajfolderName = 'Filters' + '/'
@@ -156,8 +169,8 @@ for i in range(len(SoW)):
 ##################################
 ### Hyper - KalmanNet Pipeline ###
 ##################################
-### train and test KalmanNet on dataset 0
-print("KalmanNet pipeline start, train on dataset 0")
+### train and test KalmanNet
+print("KalmanNet pipeline start")
 KalmanNet_model = KNet_mnet()
 KalmanNet_model.NNBuild(sys_model[0], args)
 print("Number of trainable parameters for KalmanNet:",sum(p.numel() for p in KalmanNet_model.parameters() if p.requires_grad))
@@ -166,8 +179,16 @@ KalmanNet_Pipeline = Pipeline_EKF(strTime, "KNet", "KalmanNet")
 KalmanNet_Pipeline.setssModel(sys_model[0])
 KalmanNet_Pipeline.setModel(KalmanNet_model)
 KalmanNet_Pipeline.setTrainingParams(args)
-KalmanNet_Pipeline.NNTrain(sys_model[0], cv_input_list[0][0], cv_target_list[0][0], train_input_list[0][0], train_target_list[0][0], path_results)
-KalmanNet_Pipeline.NNTest(sys_model[0], test_input_list[0][0], test_target_list[0][0], path_results)
+KalmanNet_Pipeline.NNTrain_mixdatasets(SoW_train_range, sys_model, cv_input_list, cv_target_list, train_input_list, train_target_list, path_results,cv_init_list,train_init_list)
+## Test Neural Network on all datasets
+for i in range(len(SoW)):
+   test_input = test_input_list[i][0]
+   test_target = test_target_list[i][0]
+   test_init = test_init_list[i][0]  
+   test_lengthMask = None 
+   print(f"Dataset {i}") 
+   KalmanNet_Pipeline.NNTest(sys_model[i], test_input_list[i][0], test_target_list[i][0], path_results)
+
 
 # load frozen weights
 frozen_weights = torch.load(path_results + 'knet_best-model.pt', map_location=device) 
@@ -184,6 +205,10 @@ print("Build HNet and KNet")
 KalmanNet_model = KNet_mnet()
 cm_weight_size = KalmanNet_model.NNBuild(sys_model[0], args, frozen_weights=frozen_weights)
 print("Number of CM parameters:", cm_weight_size)
+
+if args.hnet_input_size == 2: # Split into gain and shift
+   cm_weight_size = torch.tensor([cm_weight_size / 2]).int().item()
+
 HyperNet_model = HyperNetwork(args, cm_weight_size)
 weight_size_hnet = sum(p.numel() for p in HyperNet_model.parameters() if p.requires_grad)
 print("Number of parameters for HyperNet:", weight_size_hnet)

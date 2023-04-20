@@ -166,25 +166,25 @@ for i in range(len(SoW)):
 ##################################
 ### Hyper - KalmanNet Pipeline ###
 ##################################
-### train and test KalmanNet on dataset 0
-# print("KalmanNet pipeline start")
-# KalmanNet_model = KNet_mnet()
-# KalmanNet_model.NNBuild(sys_model[0], args)
-# print("Number of trainable parameters for KalmanNet:",sum(p.numel() for p in KalmanNet_model.parameters() if p.requires_grad))
-# ## Train Neural Network
-# KalmanNet_Pipeline = Pipeline_EKF(strTime, "KNet", "KalmanNet")
-# KalmanNet_Pipeline.setssModel(sys_model[0])
-# KalmanNet_Pipeline.setModel(KalmanNet_model)
-# KalmanNet_Pipeline.setTrainingParams(args)
-# KalmanNet_Pipeline.NNTrain_mixdatasets(SoW_train_range, sys_model, cv_input_list, cv_target_list, train_input_list, train_target_list, path_results,cv_init_list,train_init_list)
-# ## Test Neural Network on all datasets
-# for i in range(len(SoW)):
-#    test_input = test_input_list[i][0]
-#    test_target = test_target_list[i][0]
-#    test_init = test_init_list[i][0]  
-#    test_lengthMask = None 
-#    print(f"Dataset {i}") 
-#    KalmanNet_Pipeline.NNTest(sys_model[i], test_input_list[i][0], test_target_list[i][0], path_results)
+## train and test KalmanNet
+print("KalmanNet pipeline start")
+KalmanNet_model = KNet_mnet()
+KalmanNet_model.NNBuild(sys_model[0], args)
+print("Number of trainable parameters for KalmanNet:",sum(p.numel() for p in KalmanNet_model.parameters() if p.requires_grad))
+## Train Neural Network
+KalmanNet_Pipeline = Pipeline_EKF(strTime, "KNet", "KalmanNet")
+KalmanNet_Pipeline.setssModel(sys_model[0])
+KalmanNet_Pipeline.setModel(KalmanNet_model)
+KalmanNet_Pipeline.setTrainingParams(args)
+KalmanNet_Pipeline.NNTrain_mixdatasets(SoW_train_range, sys_model, cv_input_list, cv_target_list, train_input_list, train_target_list, path_results,cv_init_list,train_init_list)
+## Test Neural Network on all datasets
+for i in range(len(SoW)):
+   test_input = test_input_list[i][0]
+   test_target = test_target_list[i][0]
+   test_init = test_init_list[i][0]  
+   test_lengthMask = None 
+   print(f"Dataset {i}") 
+   KalmanNet_Pipeline.NNTest(sys_model[i], test_input_list[i][0], test_target_list[i][0], path_results)
 
 # load frozen weights
 frozen_weights = torch.load(path_results + 'knet_best-model_30dB_trainonall16_inmult=40.pt', map_location=device) 
