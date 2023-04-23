@@ -30,7 +30,7 @@ print("Current Time =", strTime)
 ###  Settings   ###
 ###################
 args = config.general_settings()
-args.use_cuda = False # use GPU or not
+args.use_cuda = True # use GPU or not
 if args.use_cuda:
    if torch.cuda.is_available():
       device = torch.device('cuda')
@@ -55,7 +55,7 @@ args.in_mult_KNet = 40
 args.out_mult_KNet = 5
 
 ### training parameters
-args.wandb_switch = False
+args.wandb_switch = True
 if args.wandb_switch:
    import wandb
    wandb.init(project="HKNet_Lor")
@@ -68,10 +68,10 @@ args.wd = 1e-3
 args.CompositionLoss = True
 args.alpha = 0.5
 # training parameters for Hypernet
-n_steps = 500
+n_steps = 5000
 n_batch = 512 # will be multiplied by num of datasets
-lr = 1e-5
-wd = 1e-10
+lr = 1e-3
+wd = 1e-2
 
 ### True model
 # SoW
@@ -218,7 +218,7 @@ if args.wandb_switch:
    "learning_rate": args.lr,  
    "weight_decay": args.wd})
 ## Train Neural Networks
-hknet_pipeline.NNTrain_curricumlum(SoW_train_range, sys_model, cv_input_list, cv_target_list, train_input_list, train_target_list, path_results,cv_init_list,train_init_list)
+# hknet_pipeline.NNTrain_curricumlum(SoW_train_range, sys_model, cv_input_list, cv_target_list, train_input_list, train_target_list, path_results,cv_init_list,train_init_list)
 
 hknet_pipeline.NNTrain_mixdatasets(SoW_train_range, sys_model, cv_input_list, cv_target_list, train_input_list, train_target_list, path_results,cv_init_list,train_init_list)
 

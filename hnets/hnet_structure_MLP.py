@@ -26,7 +26,7 @@ class hnet_structure_MLP(nn.Module):
             "0", "1" # FC7 shift/gain
         ]
         # the number of hidden layers for each MLP (changable)
-        hidden_layers = [3, 2, 1, 1, 1, 1, 1]
+        hidden_layers = [3, 2, 1, 1, 1, 1, 1] * 10
 
         self.mlps = nn.ModuleList()
         for i in range(self.num_mlps):
