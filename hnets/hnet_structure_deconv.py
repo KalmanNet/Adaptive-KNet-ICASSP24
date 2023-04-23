@@ -1,20 +1,20 @@
 """
 HyperNetwork class
-architecture: MLPs for different parts of the target network
+architecture: deconv networks for different parts of the target network
 
-hidden layer sizes are geometric mean of input and output sizes
+each deconv layer doubles the input size
 """
 
 import torch
 import torch.nn as nn
 import math
 
-class hnet_structure_MLP(nn.Module):
+class hnet_structure_deconv(nn.Module):
     def __init__(self, SoW_len, output_sizes):
-        super(hnet_structure_MLP, self).__init__()
+        super(hnet_structure_deconv, self).__init__()
 
         # fixed division of CM layers for KalmanNet
-        self.num_mlps = 7
+        self.num_deconvs = 7
         input_sizes = [size + SoW_len for size in [3,2,1,1,2,2,1]]
         self.position_embeddings = [
             "000", "001", "010", "011", "100", "101", "110", "111", # LSTM Q/Sigma ih/hh shift/gain
@@ -25,48 +25,52 @@ class hnet_structure_MLP(nn.Module):
             "00", "01", "10", "11", # FC 5/6 shift/gain
             "0", "1" # FC7 shift/gain
         ]
-        # the number of hidden layers for each MLP (changable)
-        hidden_layers = [100, 50, 20, 20, 30, 30, 20] 
+        
+        self.deconvs = nn.ModuleList()
+        for i in range(self.num_deconvs):
+            if input_sizes[i] >= output_sizes[i]:
+                num_deconv_layers = 1
+            else:
+                num_deconv_layers = math.ceil(math.log2(output_sizes[i] / input_sizes[i]))
 
-        self.mlps = nn.ModuleList()
-        for i in range(self.num_mlps):
             layers = []
-            hidden_layer_size = int(math.sqrt(input_sizes[i] * output_sizes[i]))
-            layers.append(nn.Linear(input_sizes[i], hidden_layer_size))
-            layers.append(nn.ReLU())
+            
+            for _ in range(num_deconv_layers):
+                deconv_layer = nn.ConvTranspose1d(1, 1, 2, stride=2)
+                layers.append(deconv_layer)
+                layers.append(nn.BatchNorm1d(1))
+                layers.append(nn.ReLU(inplace=True))
+            
+            input_size_linear = input_sizes[i] * (2 ** num_deconv_layers)
+            layers.append(nn.Linear(input_size_linear, output_sizes[i]))
+            deconv = nn.Sequential(*layers)
 
-            for _ in range(hidden_layers[i] - 1):
-                layers.append(nn.Linear(hidden_layer_size, hidden_layer_size))
-                layers.append(nn.ReLU())
-
-            layers.append(nn.Linear(hidden_layer_size, output_sizes[i]))
-
-            mlp = nn.Sequential(*layers)
-            self.mlps.append(mlp)
+            self.deconvs.append(deconv)
 
         
     def forward(self, SoW):
         # Create input tensors by concatenating position embeddings with SoW
         input_tensors = [torch.tensor([float(ch) for ch in pe] + [SoW], dtype=torch.float32) for pe in self.position_embeddings]
 
-        # Reuse MLPs for the corresponding input tensors
+        # Reuse deconvs for the corresponding input tensors
         outputs = []
         for i, input_tensor in enumerate(input_tensors):
             if i < 8:
-                mlp_idx = 0
+                deconv_idx = 0
             elif i < 12:
-                mlp_idx = 1
+                deconv_idx = 1
             elif i < 14:
-                mlp_idx = 2
+                deconv_idx = 2
             elif i < 16:
-                mlp_idx = 3
+                deconv_idx = 3
             elif i < 20:
-                mlp_idx = 4
+                deconv_idx = 4
             elif i < 24:
-                mlp_idx = 5
+                deconv_idx = 5
             else:
-                mlp_idx = 6
-            outputs.append(self.mlps[mlp_idx](input_tensor))
+                deconv_idx = 6
+            input_tensor = input_tensor.view(1, 1, -1) # (batch size, in_channels, width)
+            outputs.append(self.deconvs[deconv_idx](input_tensor))
 
         output_order = [
                         13, 12, # fc1_gain, fc1_shift

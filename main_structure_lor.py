@@ -10,9 +10,10 @@ from simulations.lorenz_attractor.parameters import m1x_0, m2x_0, m, n,\
 f, h, h_nonlinear, Q_structure, R_structure
 
 from hnets.hnet_structure_MLP import hnet_structure_MLP
-from mnets.KNet_mnet_structured_MLP import KalmanNetNN as KNet_mnet
+from hnets.hnet_structure_deconv import hnet_structure_deconv
+from mnets.KNet_mnet_structured import KalmanNetNN as KNet_mnet
 
-from pipelines.Pipeline_structure_MLP import Pipeline_structure_MLP
+from pipelines.Pipeline_structured import Pipeline_structured
 from pipelines.Pipeline_EKF import Pipeline_EKF
 
 print("Pipeline Start")
@@ -30,7 +31,7 @@ print("Current Time =", strTime)
 ###  Settings   ###
 ###################
 args = config.general_settings()
-args.use_cuda = True # use GPU or not
+args.use_cuda = False # use GPU or not
 if args.use_cuda:
    if torch.cuda.is_available():
       device = torch.device('cuda')
@@ -55,7 +56,7 @@ args.in_mult_KNet = 40
 args.out_mult_KNet = 5
 
 ### training parameters
-args.wandb_switch = True
+args.wandb_switch = False
 if args.wandb_switch:
    import wandb
    wandb.init(project="HKNet_Lor")
@@ -71,7 +72,7 @@ args.alpha = 0.5
 n_steps = 5000
 n_batch = 512 # will be multiplied by num of datasets
 lr = 1e-3
-wd = 1e-2
+wd = 1e-3
 
 ### True model
 # SoW
@@ -80,7 +81,7 @@ SoW = torch.tensor([[1,1], [1,0.1], [1,0.01], [1,0.001],
                     [0.01,1], [0.01,0.1], [0.01,0.01], [0.01,0.001],
                     [0.001,1], [0.001,0.1], [0.001,0.01], [0.001,0.001]])
 # train on different q2/r2 ratios
-SoW_train_range = [0,1,2,3,4,8,12] # these datasets are used for training
+SoW_train_range = list(range(len(SoW))) # these datasets are used for training
 print("SoW_train_range: ", SoW_train_range)
 SoW_test_range = list(range(len(SoW))) # these datasets are used for testing
 # noise
@@ -202,12 +203,15 @@ KalmanNet_model = KNet_mnet()
 cm_weight_size = KalmanNet_model.NNBuild(sys_model[0], args, frozen_weights=frozen_weights)
 print("Number of CM parameters:", cm_weight_size)
 
-HyperNet_model = hnet_structure_MLP(1, [KalmanNet_model.cm_shape['lstm_q_ih_gain'],KalmanNet_model.cm_shape['lstm_s_ih_gain'],KalmanNet_model.cm_shape['fc1_gain'],KalmanNet_model.cm_shape['fc2_gain1'],KalmanNet_model.cm_shape['fc3_gain'],KalmanNet_model.cm_shape['fc5_gain'],KalmanNet_model.cm_shape['fc7_gain']])
+# HyperNet_model = hnet_structure_MLP(1, [KalmanNet_model.cm_shape['lstm_q_ih_gain'],KalmanNet_model.cm_shape['lstm_s_ih_gain'],KalmanNet_model.cm_shape['fc1_gain'],KalmanNet_model.cm_shape['fc2_gain1'],KalmanNet_model.cm_shape['fc3_gain'],KalmanNet_model.cm_shape['fc5_gain'],KalmanNet_model.cm_shape['fc7_gain']])
+
+HyperNet_model = hnet_structure_deconv(1, [KalmanNet_model.cm_shape['lstm_q_ih_gain'],KalmanNet_model.cm_shape['lstm_s_ih_gain'],KalmanNet_model.cm_shape['fc1_gain'],KalmanNet_model.cm_shape['fc2_gain1'],KalmanNet_model.cm_shape['fc3_gain'],KalmanNet_model.cm_shape['fc5_gain'],KalmanNet_model.cm_shape['fc7_gain']])
+
 weight_size_hnet = sum(p.numel() for p in HyperNet_model.parameters() if p.requires_grad)
 print("Number of parameters for HyperNet:", weight_size_hnet)
 print("Total number of parameters:", cm_weight_size + weight_size_hnet)
 ## Set up pipeline
-hknet_pipeline = Pipeline_structure_MLP(strTime, "pipelines", "hknet")
+hknet_pipeline = Pipeline_structured(strTime, "pipelines", "hknet")
 hknet_pipeline.setModel(HyperNet_model, KalmanNet_model)
 hknet_pipeline.setTrainingParams(args)
 ## Optinal: record parameters to wandb

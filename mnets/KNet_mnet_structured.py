@@ -1,6 +1,6 @@
 """Class: KalmanNet as main network
 
-The hypernetwork is structured MLP.
+The hypernetwork is structured.
 """
 
 import torch
