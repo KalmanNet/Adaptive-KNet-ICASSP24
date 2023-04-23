@@ -271,7 +271,12 @@ class Pipeline_structure_MLP:
         if self.args.wandb_switch: 
             import wandb
 
-        # dataset size  
+        # dataset size
+        for i in SoW_train_range[:-1]:# except the last one
+            assert(train_target_tuple[i][0].shape[1]==train_target_tuple[i+1][0].shape[1])
+            assert(train_input_tuple[i][0].shape[1]==train_input_tuple[i+1][0].shape[1])
+            assert(train_input_tuple[i][0].shape[2]==train_input_tuple[i+1][0].shape[2])
+            # check all datasets have the same m, n, T   
         sysmdl_m = train_target_tuple[0][0].shape[1] # state x dimension
         sysmdl_n = train_input_tuple[0][0].shape[1] # input y dimension
         sysmdl_T = train_input_tuple[0][0].shape[2] # sequence length 
@@ -282,8 +287,7 @@ class Pipeline_structure_MLP:
             if sysmdl_m == 2: 
                 mask = torch.tensor([True,False])
         
-        for i in SoW_train_range: # dataset i 
-            print("Training on dataset", i)
+        for i in SoW_train_range: # dataset i  
             # SoW: make sure SoWs are consistent
             assert torch.allclose(cv_input_tuple[i][1], cv_target_tuple[i][1]) 
             assert torch.allclose(train_input_tuple[i][1], train_target_tuple[i][1]) 

@@ -68,16 +68,10 @@ args.wd = 1e-3
 args.CompositionLoss = True
 args.alpha = 0.5
 # training parameters for Hypernet
-turns = 200  # number of turns for training
-n_steps_curricumlum = 10
-n_batch_curricumlum = 64 
-lr_curricumlum = 1e-3
-wd_curricumlum = 1e-2
-
-n_steps_mixed = 5000
-n_batch_mixed = 64 # will be multiplied by num of datasets
-lr_mixed = 1e-3
-wd_mixed = 1e-2
+n_steps = 500
+n_batch = 512 # will be multiplied by num of datasets
+lr = 1e-5
+wd = 1e-10
 
 ### True model
 # SoW
@@ -86,8 +80,7 @@ SoW = torch.tensor([[1,1], [1,0.1], [1,0.01], [1,0.001],
                     [0.01,1], [0.01,0.1], [0.01,0.01], [0.01,0.001],
                     [0.001,1], [0.001,0.1], [0.001,0.01], [0.001,0.001]])
 # train on different q2/r2 ratios
-SoW_curriculum_range =[12,13,14,15,11,7,3,2,1,0,4,8] # these datasets are used for training curriculum
-SoW_train_range = list(range(len(SoW))) # these datasets are used for training mixed
+SoW_train_range = [0,1,2,3,4,8,12] # these datasets are used for training
 print("SoW_train_range: ", SoW_train_range)
 SoW_test_range = list(range(len(SoW))) # these datasets are used for testing
 # noise
@@ -198,25 +191,25 @@ frozen_weights = torch.load(path_results + 'knet_best-model_30dB_trainonall16.pt
 ### frozen KNet weights, train hypernet to generate CM weights on multiple datasets
 args.knet_trainable = False # frozen KNet weights
 args.use_context_mod = True # use CM
-## training parameters for Hypernet Curricumlum Learning
-args.n_steps = n_steps_curricumlum
-args.n_batch = n_batch_curricumlum 
-args.lr = lr_curricumlum
-args.wd = wd_curricumlum
+## training parameters for Hypernet
+args.n_steps = n_steps
+args.n_batch = n_batch # will be multiplied by num of datasets
+args.lr = lr
+args.wd = wd
 ## Build Neural Networks
 print("Build HNet and KNet")
 KalmanNet_model = KNet_mnet()
 cm_weight_size = KalmanNet_model.NNBuild(sys_model[0], args, frozen_weights=frozen_weights)
 print("Number of CM parameters:", cm_weight_size)
 
-HyperNet_model = hnet_structure_MLP(1, [KalmanNet_model.cm_shape['lstm_q_ih_gain'],KalmanNet_model.cm_shape['lstm_s_ih_gain']])
+HyperNet_model = hnet_structure_MLP(1, [KalmanNet_model.cm_shape['lstm_q_ih_gain'],KalmanNet_model.cm_shape['lstm_s_ih_gain'],KalmanNet_model.cm_shape['fc1_gain'],KalmanNet_model.cm_shape['fc2_gain1'],KalmanNet_model.cm_shape['fc3_gain'],KalmanNet_model.cm_shape['fc5_gain'],KalmanNet_model.cm_shape['fc7_gain']])
 weight_size_hnet = sum(p.numel() for p in HyperNet_model.parameters() if p.requires_grad)
 print("Number of parameters for HyperNet:", weight_size_hnet)
 print("Total number of parameters:", cm_weight_size + weight_size_hnet)
 ## Set up pipeline
 hknet_pipeline = Pipeline_structure_MLP(strTime, "pipelines", "hknet")
 hknet_pipeline.setModel(HyperNet_model, KalmanNet_model)
-hknet_pipeline.setTrainingParams(args) 
+hknet_pipeline.setTrainingParams(args)
 ## Optinal: record parameters to wandb
 if args.wandb_switch:
    wandb.log({
@@ -224,20 +217,9 @@ if args.wandb_switch:
    "batch_size": args.n_batch,
    "learning_rate": args.lr,  
    "weight_decay": args.wd})
+## Train Neural Networks
+hknet_pipeline.NNTrain_curricumlum(SoW_train_range, sys_model, cv_input_list, cv_target_list, train_input_list, train_target_list, path_results,cv_init_list,train_init_list)
 
-## Train Neural Networks Curricumlum Learning
-for k in range(turns):
-  print(f"Turn {k+1} of {turns} turns")
-  hknet_pipeline.NNTrain_curricumlum(SoW_curriculum_range, sys_model, cv_input_list, cv_target_list, train_input_list, train_target_list, path_results,cv_init_list,train_init_list)
-
-## training parameters for Hypernet Mixed Datasets
-args.n_steps = n_steps_mixed
-args.n_batch = n_batch_mixed
-args.lr = lr_mixed
-args.wd = wd_mixed
-hknet_pipeline.setTrainingParams(args)
-
-## Train Neural Networks Mixed Datasets
 hknet_pipeline.NNTrain_mixdatasets(SoW_train_range, sys_model, cv_input_list, cv_target_list, train_input_list, train_target_list, path_results,cv_init_list,train_init_list)
 
 ## Test Neural Networks for each dataset  
