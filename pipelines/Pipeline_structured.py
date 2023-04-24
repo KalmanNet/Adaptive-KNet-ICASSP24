@@ -13,6 +13,28 @@ import random
 import time
 import math
 
+class WeightedMSELoss(nn.Module):
+    def __init__(self):
+        super(WeightedMSELoss, self).__init__()
+
+    def forward(self, predictions, targets, Q, R):
+        # Compute the residuals (errors)
+        residuals = predictions - targets
+
+        # Calculate the trace of Q and R matrices
+        Q_trace = torch.trace(Q)
+        R_trace = torch.trace(R)
+
+        # Calculate the weights based on the inverse of the traces
+        Q_weight = 1 / Q_trace
+        R_weight = 1 / R_trace
+
+        # Compute the weighted MSE loss using the calculated weights
+        weighted_residuals = Q_weight * R_weight * (residuals ** 2)
+        weighted_mse_loss = torch.mean(weighted_residuals)
+
+        return weighted_mse_loss
+
 class HuberIQRScalingLoss(nn.Module):
     def __init__(self, delta=1.0, quantile_range=(25, 75)):
         super(HuberIQRScalingLoss, self).__init__()
@@ -37,6 +59,43 @@ class HuberIQRScalingLoss(nn.Module):
         mse_loss = 0.5 * (scaled_residuals ** 2)
         mae_loss = self.delta * (abs_scaled_residuals - 0.5 * self.delta)
         huber_loss = torch.where(abs_scaled_residuals <= self.delta, mse_loss, mae_loss)
+        
+        return torch.mean(huber_loss)
+
+class WeightedHuberIQRScalingLoss(nn.Module):
+    def __init__(self, delta=1.0, quantile_range=(25, 75)):
+        super(WeightedHuberIQRScalingLoss, self).__init__()
+        self.delta = delta
+        self.lower_quantile, self.upper_quantile = quantile_range
+    
+    def forward(self, predictions, targets, Q, R):
+        # Compute the residuals (errors)
+        residuals = predictions - targets
+
+        # Calculate the IQR for scaling
+        if predictions.numel() >= 4:
+            Q1 = torch.quantile(residuals, self.lower_quantile / 100.0)
+            Q3 = torch.quantile(residuals, self.upper_quantile / 100.0)
+            IQR = Q3 - Q1
+            scaled_residuals = residuals / IQR
+        else:
+            scaled_residuals = residuals
+
+        # Calculate the trace of Q and R matrices
+        Q_trace = torch.trace(Q)
+        R_trace = torch.trace(R)
+
+        # Calculate the weights based on the inverse of the traces
+        Q_weight = 1 / Q_trace
+        R_weight = 1 / R_trace
+
+        weighted_scaled_residuals = Q_weight * R_weight * scaled_residuals
+
+        # Compute the Huber loss using the scaled residuals
+        abs_residuals = torch.abs(weighted_scaled_residuals)
+        mse_loss = 0.5 * (weighted_scaled_residuals ** 2)
+        mae_loss = self.delta * (abs_residuals - 0.5 * self.delta)
+        huber_loss = torch.where(abs_residuals <= self.delta, mse_loss, mae_loss)
         
         return torch.mean(huber_loss)
 
@@ -74,7 +133,12 @@ class Pipeline_structured:
 
         # MSE LOSS Function
         if args.RobustScaler == True:
-            self.loss_fn_train = HuberIQRScalingLoss(delta=1.0, quantile_range=(25, 75))
+            if args.WeightedMSE == True:
+                self.loss_fn_train = WeightedHuberIQRScalingLoss(delta=1.0, quantile_range=(25, 75))
+            else:
+                self.loss_fn_train = HuberIQRScalingLoss(delta=1.0, quantile_range=(25, 75))
+        elif args.WeightedMSE == True:
+            self.loss_fn_train = WeightedMSELoss()
         else:
             self.loss_fn_train = nn.MSELoss(reduction='mean')
         self.loss_fn_cv = nn.MSELoss(reduction='mean')
@@ -128,8 +192,6 @@ class Pipeline_structured:
                 y_training_batch = torch.zeros([self.N_B, sysmdl_n, sysmdl_T]).to(self.device)
                 train_target_batch = torch.zeros([self.N_B, sysmdl_m, sysmdl_T]).to(self.device)
                 x_out_training_batch = torch.zeros([self.N_B, sysmdl_m, sysmdl_T]).to(self.device)
-                if self.args.randomLength:
-                    MSE_train_linear_LOSS = torch.zeros([self.N_B])
                 # Init Sequence
                 train_init_batch = torch.empty([self.N_B, sysmdl_m,1]).to(self.device)
                 # Init Hidden State
@@ -176,10 +238,16 @@ class Pipeline_structured:
                 # weights_cm.register_hook(self.print_grad) # debug
 
                 # Compute Training Loss
-                if(MaskOnState):                    
-                    MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(x_out_training_batch[:,mask,:], train_target_batch[:,mask,:])
-                else: # no mask on state         
-                    MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(x_out_training_batch, train_target_batch)
+                if(MaskOnState):   
+                    if self.args.WeightedMSE:   
+                        MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(x_out_training_batch[:,mask,:], train_target_batch[:,mask,:], sys_model[i].Q, sys_model[i].R)
+                    else:              
+                        MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(x_out_training_batch[:,mask,:], train_target_batch[:,mask,:])
+                else: # no mask on state   
+                    if self.args.WeightedMSE:   
+                        MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(x_out_training_batch, train_target_batch, sys_model[i].Q, sys_model[i].R)
+                    else:        
+                        MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(x_out_training_batch, train_target_batch)
                         
             # averaged Loss over all datasets           
             MSE_trainbatch_linear_LOSS_average = MSE_trainbatch_linear_LOSS.sum() / len(SoW_train_range)                         
@@ -210,8 +278,6 @@ class Pipeline_structured:
 
             with torch.no_grad():
                 for i in SoW_train_range: # dataset i 
-                    if self.args.randomLength:
-                        MSE_cv_linear_LOSS = torch.zeros([self.N_CV])
                     # Init Output
                     x_out_cv_batch = torch.empty([self.N_CV, sysmdl_m, sysmdl_T_test]).to(self.device)
                     # Init Hidden State
@@ -329,9 +395,6 @@ class Pipeline_structured:
                 self.mnet.batch_size = self.N_B 
                 # Init Hidden State
                 self.mnet.init_hidden()  
-
-                if self.args.randomLength:
-                    MSE_train_linear_LOSS = torch.zeros([self.N_B])
                 # Init Sequence
                 train_init_batch = torch.empty([self.N_B, sysmdl_m,1]).to(self.device)
                 # Init Training Batch tensors
@@ -392,9 +455,6 @@ class Pipeline_structured:
                 self.mnet.batch_size = self.N_CV 
 
                 with torch.no_grad():
-                    # dataset i 
-                    if self.args.randomLength:
-                        MSE_cv_linear_LOSS = torch.zeros([self.N_CV])
                     # Init Output
                     x_out_cv_batch = torch.empty([self.N_CV, sysmdl_m, sysmdl_T_test]).to(self.device)
                     # Init Hidden State

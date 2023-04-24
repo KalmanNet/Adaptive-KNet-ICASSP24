@@ -10,6 +10,92 @@ import time
 from Plot import Plot_KF
 import math
 
+class WeightedMSELoss(nn.Module):
+    def __init__(self):
+        super(WeightedMSELoss, self).__init__()
+
+    def forward(self, predictions, targets, Q, R):
+        # Compute the residuals (errors)
+        residuals = predictions - targets
+
+        # Calculate the trace of Q and R matrices
+        Q_trace = torch.trace(Q)
+        R_trace = torch.trace(R)
+
+        # Calculate the weights based on the inverse of the traces
+        Q_weight = 1 / Q_trace
+        R_weight = 1 / R_trace
+
+        # Compute the weighted MSE loss using the calculated weights
+        weighted_residuals = Q_weight * R_weight * (residuals ** 2)
+        weighted_mse_loss = torch.mean(weighted_residuals)
+
+        return weighted_mse_loss
+
+class HuberIQRScalingLoss(nn.Module):
+    def __init__(self, delta=1.0, quantile_range=(25, 75)):
+        super(HuberIQRScalingLoss, self).__init__()
+        self.delta = delta
+        self.lower_quantile, self.upper_quantile = quantile_range
+
+    def forward(self, predictions, targets):
+        # Compute the residuals (errors)
+        residuals = predictions - targets
+
+        # Calculate the IQR for scaling
+        if predictions.numel() >= 4:
+            Q1 = torch.quantile(residuals, self.lower_quantile / 100.0)
+            Q3 = torch.quantile(residuals, self.upper_quantile / 100.0)
+            IQR = Q3 - Q1
+            scaled_residuals = residuals / IQR
+        else:
+            scaled_residuals = residuals
+
+        # Compute the Huber loss using the scaled residuals
+        abs_scaled_residuals = torch.abs(scaled_residuals)
+        mse_loss = 0.5 * (scaled_residuals ** 2)
+        mae_loss = self.delta * (abs_scaled_residuals - 0.5 * self.delta)
+        huber_loss = torch.where(abs_scaled_residuals <= self.delta, mse_loss, mae_loss)
+        
+        return torch.mean(huber_loss)
+
+class WeightedHuberIQRScalingLoss(nn.Module):
+    def __init__(self, delta=1.0, quantile_range=(25, 75)):
+        super(WeightedHuberIQRScalingLoss, self).__init__()
+        self.delta = delta
+        self.lower_quantile, self.upper_quantile = quantile_range
+    
+    def forward(self, predictions, targets, Q, R):
+        # Compute the residuals (errors)
+        residuals = predictions - targets
+
+        # Calculate the IQR for scaling
+        if predictions.numel() >= 4:
+            Q1 = torch.quantile(residuals, self.lower_quantile / 100.0)
+            Q3 = torch.quantile(residuals, self.upper_quantile / 100.0)
+            IQR = Q3 - Q1
+            scaled_residuals = residuals / IQR
+        else:
+            scaled_residuals = residuals
+
+        # Calculate the trace of Q and R matrices
+        Q_trace = torch.trace(Q)
+        R_trace = torch.trace(R)
+
+        # Calculate the weights based on the inverse of the traces
+        Q_weight = 1 / Q_trace
+        R_weight = 1 / R_trace
+
+        weighted_scaled_residuals = Q_weight * R_weight * scaled_residuals
+
+        # Compute the Huber loss using the scaled residuals
+        abs_residuals = torch.abs(weighted_scaled_residuals)
+        mse_loss = 0.5 * (weighted_scaled_residuals ** 2)
+        mae_loss = self.delta * (abs_residuals - 0.5 * self.delta)
+        huber_loss = torch.where(abs_residuals <= self.delta, mse_loss, mae_loss)
+        
+        return torch.mean(huber_loss)
+    
 class Pipeline_EKF:
 
     def __init__(self, Time, folderName, modelName):
@@ -41,7 +127,17 @@ class Pipeline_EKF:
         self.weightDecay = args.wd # L2 Weight Regularization - Weight Decay
         self.alpha = args.alpha # Composition loss factor
         # MSE LOSS Function
-        self.loss_fn = nn.MSELoss(reduction='mean')
+        self.loss_fn = nn.MSELoss(reduction='mean') # Loss Function for single dataset and CV
+        # Loss Function for multiple datasets
+        if args.RobustScaler == True:
+            if args.WeightedMSE == True:
+                self.loss_fn_train = WeightedHuberIQRScalingLoss(delta=1.0, quantile_range=(25, 75))
+            else:
+                self.loss_fn_train = HuberIQRScalingLoss(delta=1.0, quantile_range=(25, 75))
+        elif args.WeightedMSE == True:
+            self.loss_fn_train = WeightedMSELoss()
+        else:
+            self.loss_fn_train = nn.MSELoss(reduction='mean')
 
         # Use the optim package to define an Optimizer that will update the weights of
         # the model for us. Here we will use Adam; the optim package contains many other
@@ -415,8 +511,6 @@ class Pipeline_EKF:
                 y_training_batch = torch.zeros([self.N_B, sysmdl_n, sysmdl_T]).to(self.device)
                 train_target_batch = torch.zeros([self.N_B, sysmdl_m, sysmdl_T]).to(self.device)
                 x_out_training_batch = torch.zeros([self.N_B, sysmdl_m, sysmdl_T]).to(self.device)
-                if self.args.randomLength:
-                    MSE_train_linear_LOSS = torch.zeros([self.N_B])
                 # Init Sequence
                 train_init_batch = torch.empty([self.N_B, sysmdl_m,1]).to(self.device)
                 # Init Hidden State
@@ -465,43 +559,26 @@ class Pipeline_EKF:
                         y_hat[:,:,t] = torch.squeeze(SysModel[i].h(torch.unsqueeze(x_out_training_batch[:,:,t],2)))
 
                     if(MaskOnState):### FIXME: composition loss, y_hat may have different mask with x
-                        if self.args.randomLength:
-                            jj = 0
-                            for index in n_e:# mask out the padded part when computing loss
-                                MSE_train_linear_LOSS[jj] = self.alpha * self.loss_fn(x_out_training_batch[jj,mask,train_lengthMask[index]], train_target_batch[jj,mask,train_lengthMask[index]])+(1-self.alpha)*self.loss_fn(y_hat[jj,mask,train_lengthMask[index]], y_training_batch[jj,mask,train_lengthMask[index]])
-                                jj += 1
-                            MSE_trainbatch_linear_LOSS[i] = torch.mean(MSE_train_linear_LOSS)
-                        else:                     
-                            MSE_trainbatch_linear_LOSS[i] = self.alpha * self.loss_fn(x_out_training_batch[:,mask,:], train_target_batch[:,mask,:])+(1-self.alpha)*self.loss_fn(y_hat[:,mask,:], y_training_batch[:,mask,:])
+                        if self.args.WeightedMSE: 
+                            MSE_trainbatch_linear_LOSS[i] = self.alpha * self.loss_fn_train(x_out_training_batch[:,mask,:], train_target_batch[:,mask,:], SysModel[i].Q, SysModel[i].R)+(1-self.alpha)*self.loss_fn_train(y_hat[:,mask,:], y_training_batch[:,mask,:], SysModel[i].Q, SysModel[i].R)
+                        else:
+                            MSE_trainbatch_linear_LOSS[i] = self.alpha * self.loss_fn_train(x_out_training_batch[:,mask,:], train_target_batch[:,mask,:])+(1-self.alpha)*self.loss_fn_train(y_hat[:,mask,:], y_training_batch[:,mask,:])
                     else:# no mask on state
-                        if self.args.randomLength:
-                            jj = 0
-                            for index in n_e:# mask out the padded part when computing loss
-                                MSE_train_linear_LOSS[jj] = self.alpha * self.loss_fn(x_out_training_batch[jj,:,train_lengthMask[index]], train_target_batch[jj,:,train_lengthMask[index]])+(1-self.alpha)*self.loss_fn(y_hat[jj,:,train_lengthMask[index]], y_training_batch[jj,:,train_lengthMask[index]])
-                                jj += 1
-                            MSE_trainbatch_linear_LOSS[i] = torch.mean(MSE_train_linear_LOSS)
-                        else:                
-                            MSE_trainbatch_linear_LOSS[i] = self.alpha * self.loss_fn(x_out_training_batch, train_target_batch)+(1-self.alpha)*self.loss_fn(y_hat, y_training_batch)
-                
+                        if self.args.WeightedMSE:           
+                            MSE_trainbatch_linear_LOSS[i] = self.alpha * self.loss_fn_train(x_out_training_batch, train_target_batch, SysModel[i].Q, SysModel[i].R)+(1-self.alpha)*self.loss_fn_train(y_hat, y_training_batch, SysModel[i].Q, SysModel[i].R)
+                        else:
+                            MSE_trainbatch_linear_LOSS[i] = self.alpha * self.loss_fn_train(x_out_training_batch, train_target_batch)+(1-self.alpha)*self.loss_fn_train(y_hat, y_training_batch)
                 else:# no composition loss
                     if(MaskOnState):
                         if self.args.randomLength:
-                            jj = 0
-                            for index in n_e:# mask out the padded part when computing loss
-                                MSE_train_linear_LOSS[jj] = self.loss_fn(x_out_training_batch[jj,mask,train_lengthMask[index]], train_target_batch[jj,mask,train_lengthMask[index]])
-                                jj += 1
-                            MSE_trainbatch_linear_LOSS[i] = torch.mean(MSE_train_linear_LOSS)
+                            MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(x_out_training_batch[:,mask,:], train_target_batch[:,mask,:], SysModel[i].Q, SysModel[i].R)
                         else:
-                            MSE_trainbatch_linear_LOSS[i] = self.loss_fn(x_out_training_batch[:,mask,:], train_target_batch[:,mask,:])
+                            MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(x_out_training_batch[:,mask,:], train_target_batch[:,mask,:])
                     else: # no mask on state
                         if self.args.randomLength:
-                            jj = 0
-                            for index in n_e:# mask out the padded part when computing loss
-                                MSE_train_linear_LOSS[jj] = self.loss_fn(x_out_training_batch[jj,:,train_lengthMask[index]], train_target_batch[jj,:,train_lengthMask[index]])
-                                jj += 1
-                            MSE_trainbatch_linear_LOSS[i] = torch.mean(MSE_train_linear_LOSS)
-                        else: 
-                            MSE_trainbatch_linear_LOSS[i] = self.loss_fn(x_out_training_batch, train_target_batch)
+                            MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(x_out_training_batch, train_target_batch, SysModel[i].Q, SysModel[i].R)
+                        else:
+                            MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(x_out_training_batch, train_target_batch)
 
             # averaged Loss over all datasets           
             MSE_trainbatch_linear_LOSS_average = MSE_trainbatch_linear_LOSS.sum() / len(SoW_train_range)                         

@@ -60,6 +60,8 @@ def general_settings():
                         help='input alpha [0,1] for the composition loss')
     parser.add_argument('--RobustScaler', type=bool, default=False, metavar='RobustScaler',
                         help='if True, use Robust Scaling for the losses of different datasets')
+    parser.add_argument('--WeightedMSE', type=bool, default=False, metavar='WeightedMSE',
+                        help='if True, use weighted MSE loss')
 
     
     ### KalmanNet settings

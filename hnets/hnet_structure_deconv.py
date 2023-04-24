@@ -35,20 +35,21 @@ class hnet_structure_deconv(nn.Module):
             if input_sizes[i] >= output_sizes[i]:
                 num_deconv_layers = 1
             else:
-                num_deconv_layers = math.ceil(math.log(output_sizes[i] / input_sizes[i], 4))
+                num_deconv_layers = math.ceil(math.log(output_sizes[i] / input_sizes[i], 2))
 
             layers = []
             output_channels = input_sizes[i]
             for _ in range(num_deconv_layers):
                 input_channels = output_channels
                 output_channels = input_channels * 2
-                deconv_layer = nn.ConvTranspose1d(input_channels, output_channels, 2, stride=2)
+                deconv_layer = nn.ConvTranspose1d(input_channels, output_channels, 1, stride=1)
                 layers.append(deconv_layer)
-                layers.append(nn.BatchNorm1d(output_channels))
+                # layers.append(nn.BatchNorm1d(output_channels))
                 layers.append(nn.ReLU(inplace=True))
+                # layers.append(nn.Dropout(p=0.5))
             
             layers.append(Flatten())
-            input_size_linear = input_sizes[i] * (4 ** num_deconv_layers)
+            input_size_linear = input_sizes[i] * (2 ** num_deconv_layers)
             layers.append(nn.Linear(input_size_linear, output_sizes[i]))
             deconv = nn.Sequential(*layers)
 
