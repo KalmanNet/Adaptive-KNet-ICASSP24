@@ -31,7 +31,7 @@ print("Current Time =", strTime)
 ###  Settings   ###
 ###################
 args = config.general_settings()
-args.use_cuda = False # use GPU or not
+args.use_cuda = True # use GPU or not
 if args.use_cuda:
    if torch.cuda.is_available():
       device = torch.device('cuda')
@@ -56,7 +56,7 @@ args.in_mult_KNet = 40
 args.out_mult_KNet = 5
 
 ### training parameters
-args.wandb_switch = False
+args.wandb_switch = True
 if args.wandb_switch:
    import wandb
    wandb.init(project="HKNet_Lor")
@@ -204,9 +204,9 @@ KalmanNet_model = KNet_mnet()
 cm_weight_size = KalmanNet_model.NNBuild(sys_model[0], args, frozen_weights=frozen_weights)
 print("Number of CM parameters:", cm_weight_size)
 
-HyperNet_model = hnet_structure_MLP(1, [KalmanNet_model.cm_shape['lstm_q_ih_gain'],KalmanNet_model.cm_shape['lstm_s_ih_gain'],KalmanNet_model.cm_shape['fc1_gain'],KalmanNet_model.cm_shape['fc2_gain1'],KalmanNet_model.cm_shape['fc3_gain'],KalmanNet_model.cm_shape['fc5_gain'],KalmanNet_model.cm_shape['fc7_gain']])
+# HyperNet_model = hnet_structure_MLP(1, [KalmanNet_model.cm_shape['lstm_q_ih_gain'],KalmanNet_model.cm_shape['lstm_s_ih_gain'],KalmanNet_model.cm_shape['fc1_gain'],KalmanNet_model.cm_shape['fc2_gain1'],KalmanNet_model.cm_shape['fc3_gain'],KalmanNet_model.cm_shape['fc5_gain'],KalmanNet_model.cm_shape['fc7_gain']])
 
-# HyperNet_model = hnet_structure_deconv(1, [KalmanNet_model.cm_shape['lstm_q_ih_gain'],KalmanNet_model.cm_shape['lstm_s_ih_gain'],KalmanNet_model.cm_shape['fc1_gain'],KalmanNet_model.cm_shape['fc2_gain1'],KalmanNet_model.cm_shape['fc3_gain'],KalmanNet_model.cm_shape['fc5_gain'],KalmanNet_model.cm_shape['fc7_gain']])
+HyperNet_model = hnet_structure_deconv(1, [KalmanNet_model.cm_shape['lstm_q_ih_gain'],KalmanNet_model.cm_shape['lstm_s_ih_gain'],KalmanNet_model.cm_shape['fc1_gain'],KalmanNet_model.cm_shape['fc2_gain1'],KalmanNet_model.cm_shape['fc3_gain'],KalmanNet_model.cm_shape['fc5_gain'],KalmanNet_model.cm_shape['fc7_gain']])
 
 weight_size_hnet = sum(p.numel() for p in HyperNet_model.parameters() if p.requires_grad)
 print("Number of parameters for HyperNet:", weight_size_hnet)

@@ -13,29 +13,32 @@ import random
 import time
 import math
 
-class RobustMSELoss(nn.Module):
-    def __init__(self, quantile_range=(25, 75)):
-        super(RobustMSELoss, self).__init__()
+class HuberIQRScalingLoss(nn.Module):
+    def __init__(self, delta=1.0, quantile_range=(25, 75)):
+        super(HuberIQRScalingLoss, self).__init__()
+        self.delta = delta
         self.lower_quantile, self.upper_quantile = quantile_range
 
     def forward(self, predictions, targets):
         # Compute the residuals (errors)
         residuals = predictions - targets
 
+        # Calculate the IQR for scaling
         if predictions.numel() >= 4:
-            # Calculate the IQR for scaling
             Q1 = torch.quantile(residuals, self.lower_quantile / 100.0)
             Q3 = torch.quantile(residuals, self.upper_quantile / 100.0)
             IQR = Q3 - Q1
-
-            # Scale the residuals using IQR
             scaled_residuals = residuals / IQR
         else:
             scaled_residuals = residuals
 
-        # Compute the MSE loss using the scaled residuals
-        mse_loss = torch.mean(scaled_residuals ** 2)
-        return mse_loss
+        # Compute the Huber loss using the scaled residuals
+        abs_scaled_residuals = torch.abs(scaled_residuals)
+        mse_loss = 0.5 * (scaled_residuals ** 2)
+        mae_loss = self.delta * (abs_scaled_residuals - 0.5 * self.delta)
+        huber_loss = torch.where(abs_scaled_residuals <= self.delta, mse_loss, mae_loss)
+        
+        return torch.mean(huber_loss)
 
 class Pipeline_structured:
 
@@ -71,7 +74,7 @@ class Pipeline_structured:
 
         # MSE LOSS Function
         if args.RobustScaler == True:
-            self.loss_fn_train = RobustMSELoss(quantile_range=(25, 75))
+            self.loss_fn_train = HuberIQRScalingLoss(delta=1.0, quantile_range=(25, 75))
         else:
             self.loss_fn_train = nn.MSELoss(reduction='mean')
         self.loss_fn_cv = nn.MSELoss(reduction='mean')
@@ -84,8 +87,8 @@ class Pipeline_structured:
         cv_init, train_init, MaskOnState=False, train_lengthMask=None,cv_lengthMask=None):
         
         ### Optional: start training from previous checkpoint
-        # hnet_model_weights = torch.load(path_results+'hnet_best-model.pt', map_location=self.device) 
-        # self.hnet.load_state_dict(hnet_model_weights)
+        hnet_model_weights = torch.load(path_results+'hnet_best-model.pt', map_location=self.device) 
+        self.hnet.load_state_dict(hnet_model_weights)
         
         if self.args.wandb_switch: 
             import wandb
