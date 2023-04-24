@@ -58,6 +58,8 @@ def general_settings():
                         help='if True, use composition loss')
     parser.add_argument('--alpha', type=float, default=0.3, metavar='alpha',
                         help='input alpha [0,1] for the composition loss')
+    parser.add_argument('--RobustScaler', type=bool, default=False, metavar='RobustScaler',
+                        help='if True, use Robust Scaling for the losses of different datasets')
 
     
     ### KalmanNet settings

@@ -69,9 +69,10 @@ args.wd = 1e-3
 args.CompositionLoss = True
 args.alpha = 0.5
 # training parameters for Hypernet
+args.RobustScaler = True # if True, use Robust Scaling for the losses of different datasets
 n_steps = 5000
 n_batch = 512 # will be multiplied by num of datasets
-lr = 1e-3
+lr = 1e-4
 wd = 1e-3
 
 ### True model
@@ -203,9 +204,9 @@ KalmanNet_model = KNet_mnet()
 cm_weight_size = KalmanNet_model.NNBuild(sys_model[0], args, frozen_weights=frozen_weights)
 print("Number of CM parameters:", cm_weight_size)
 
-# HyperNet_model = hnet_structure_MLP(1, [KalmanNet_model.cm_shape['lstm_q_ih_gain'],KalmanNet_model.cm_shape['lstm_s_ih_gain'],KalmanNet_model.cm_shape['fc1_gain'],KalmanNet_model.cm_shape['fc2_gain1'],KalmanNet_model.cm_shape['fc3_gain'],KalmanNet_model.cm_shape['fc5_gain'],KalmanNet_model.cm_shape['fc7_gain']])
+HyperNet_model = hnet_structure_MLP(1, [KalmanNet_model.cm_shape['lstm_q_ih_gain'],KalmanNet_model.cm_shape['lstm_s_ih_gain'],KalmanNet_model.cm_shape['fc1_gain'],KalmanNet_model.cm_shape['fc2_gain1'],KalmanNet_model.cm_shape['fc3_gain'],KalmanNet_model.cm_shape['fc5_gain'],KalmanNet_model.cm_shape['fc7_gain']])
 
-HyperNet_model = hnet_structure_deconv(1, [KalmanNet_model.cm_shape['lstm_q_ih_gain'],KalmanNet_model.cm_shape['lstm_s_ih_gain'],KalmanNet_model.cm_shape['fc1_gain'],KalmanNet_model.cm_shape['fc2_gain1'],KalmanNet_model.cm_shape['fc3_gain'],KalmanNet_model.cm_shape['fc5_gain'],KalmanNet_model.cm_shape['fc7_gain']])
+# HyperNet_model = hnet_structure_deconv(1, [KalmanNet_model.cm_shape['lstm_q_ih_gain'],KalmanNet_model.cm_shape['lstm_s_ih_gain'],KalmanNet_model.cm_shape['fc1_gain'],KalmanNet_model.cm_shape['fc2_gain1'],KalmanNet_model.cm_shape['fc3_gain'],KalmanNet_model.cm_shape['fc5_gain'],KalmanNet_model.cm_shape['fc7_gain']])
 
 weight_size_hnet = sum(p.numel() for p in HyperNet_model.parameters() if p.requires_grad)
 print("Number of parameters for HyperNet:", weight_size_hnet)

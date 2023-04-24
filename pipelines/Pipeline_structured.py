@@ -13,6 +13,30 @@ import random
 import time
 import math
 
+class RobustMSELoss(nn.Module):
+    def __init__(self, quantile_range=(25, 75)):
+        super(RobustMSELoss, self).__init__()
+        self.lower_quantile, self.upper_quantile = quantile_range
+
+    def forward(self, predictions, targets):
+        # Compute the residuals (errors)
+        residuals = predictions - targets
+
+        if predictions.numel() >= 4:
+            # Calculate the IQR for scaling
+            Q1 = torch.quantile(residuals, self.lower_quantile / 100.0)
+            Q3 = torch.quantile(residuals, self.upper_quantile / 100.0)
+            IQR = Q3 - Q1
+
+            # Scale the residuals using IQR
+            scaled_residuals = residuals / IQR
+        else:
+            scaled_residuals = residuals
+
+        # Compute the MSE loss using the scaled residuals
+        mse_loss = torch.mean(scaled_residuals ** 2)
+        return mse_loss
+
 class Pipeline_structured:
 
     def __init__(self, Time, folderName, modelName):
@@ -44,8 +68,13 @@ class Pipeline_structured:
         self.learningRate = args.lr # Learning Rate
         self.weightDecay = args.wd # L2 Weight Regularization - Weight Decay
         self.alpha = args.alpha # Composition loss factor
+
         # MSE LOSS Function
-        self.loss_fn = nn.MSELoss(reduction='mean')
+        if args.RobustScaler == True:
+            self.loss_fn_train = RobustMSELoss(quantile_range=(25, 75))
+        else:
+            self.loss_fn_train = nn.MSELoss(reduction='mean')
+        self.loss_fn_cv = nn.MSELoss(reduction='mean')
 
         # Optimize hnet and mnet in an end-to-end fashion
         self.optimizer = torch.optim.Adam(self.hnet.parameters(), \
@@ -144,26 +173,11 @@ class Pipeline_structured:
                 # weights_cm.register_hook(self.print_grad) # debug
 
                 # Compute Training Loss
-                if(MaskOnState):
-                    if self.args.randomLength:
-                        dataset_index = 0
-                        for index in n_e:# mask out the padded part when computing loss
-                            MSE_train_linear_LOSS[dataset_index] = self.loss_fn(x_out_training_batch[dataset_index,mask,train_lengthMask[i][index]], train_target_batch[dataset_index,mask,train_lengthMask[index]])
-                            dataset_index += 1
-                        MSE_trainbatch_linear_LOSS[i] = torch.mean(MSE_train_linear_LOSS)
-                    else:
-                        MSE_trainbatch_linear_LOSS[i] = self.loss_fn(x_out_training_batch[:,mask,:], train_target_batch[:,mask,:])
-                else: # no mask on state
-                    if self.args.randomLength:
-                        dataset_index = 0
-                        for index in n_e:# mask out the padded part when computing loss
-                            MSE_train_linear_LOSS[dataset_index] = self.loss_fn(x_out_training_batch[dataset_index,:,train_lengthMask[i][index]], train_target_batch[dataset_index,:,train_lengthMask[index]])
-                            dataset_index += 1
-                        MSE_trainbatch_linear_LOSS[i] = torch.mean(MSE_train_linear_LOSS)
-                    else: 
-                        MSE_trainbatch_linear_LOSS[i] = self.loss_fn(x_out_training_batch, train_target_batch)
+                if(MaskOnState):                    
+                    MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(x_out_training_batch[:,mask,:], train_target_batch[:,mask,:])
+                else: # no mask on state         
+                    MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(x_out_training_batch, train_target_batch)
                         
-
             # averaged Loss over all datasets           
             MSE_trainbatch_linear_LOSS_average = MSE_trainbatch_linear_LOSS.sum() / len(SoW_train_range)                         
             self.MSE_train_linear_epoch[ti] = MSE_trainbatch_linear_LOSS_average.item()
@@ -208,20 +222,10 @@ class Pipeline_structured:
                         x_out_cv_batch[:, :, t] = torch.squeeze(self.mnet(torch.unsqueeze(cv_input_tuple[i][0][:, :, t],2), weights_cm=weights_cm))
                     
                     # Compute CV Loss
-                    if(MaskOnState):
-                        if self.args.randomLength:
-                            for index in range(self.N_CV):
-                                MSE_cv_linear_LOSS[index] = self.loss_fn(x_out_cv_batch[index,mask,cv_lengthMask[i][index]], cv_target_tuple[i][0][index,mask,cv_lengthMask[index]])
-                            MSE_cvbatch_linear_LOSS[i] = torch.mean(MSE_cv_linear_LOSS)
-                        else:          
-                            MSE_cvbatch_linear_LOSS[i] = self.loss_fn(x_out_cv_batch[:,mask,:], cv_target_tuple[i][0][:,mask,:])
+                    if(MaskOnState):                         
+                        MSE_cvbatch_linear_LOSS[i] = self.loss_fn_cv(x_out_cv_batch[:,mask,:], cv_target_tuple[i][0][:,mask,:])
                     else:
-                        if self.args.randomLength:
-                            for index in range(self.N_CV):
-                                MSE_cv_linear_LOSS[index] = self.loss_fn(x_out_cv_batch[index,:,cv_lengthMask[i][index]], cv_target_tuple[i][0][index,:,cv_lengthMask[index]])
-                            MSE_cvbatch_linear_LOSS[i] = torch.mean(MSE_cv_linear_LOSS)
-                        else:
-                            MSE_cvbatch_linear_LOSS[i] = self.loss_fn(x_out_cv_batch, cv_target_tuple[i][0])
+                        MSE_cvbatch_linear_LOSS[i] = self.loss_fn_cv(x_out_cv_batch, cv_target_tuple[i][0])
                     
                 # Print loss for each dataset in train range
                 for i in SoW_train_range:
@@ -359,24 +363,10 @@ class Pipeline_structured:
 
                 # Compute Training Loss
                 MSE_trainbatch_linear_LOSS = 0
-                if(MaskOnState):
-                    if self.args.randomLength:
-                        dataset_index = 0
-                        for index in n_e:# mask out the padded part when computing loss
-                            MSE_train_linear_LOSS[dataset_index] = self.loss_fn(x_out_training_batch[dataset_index,mask,train_lengthMask[i][index]], train_target_batch[dataset_index,mask,train_lengthMask[index]])
-                            dataset_index += 1
-                        MSE_trainbatch_linear_LOSS = torch.mean(MSE_train_linear_LOSS)
-                    else:
-                        MSE_trainbatch_linear_LOSS = self.loss_fn(x_out_training_batch[:,mask,:], train_target_batch[:,mask,:])
-                else: # no mask on state
-                    if self.args.randomLength:
-                        dataset_index = 0
-                        for index in n_e:# mask out the padded part when computing loss
-                            MSE_train_linear_LOSS[dataset_index] = self.loss_fn(x_out_training_batch[dataset_index,:,train_lengthMask[i][index]], train_target_batch[dataset_index,:,train_lengthMask[index]])
-                            dataset_index += 1
-                        MSE_trainbatch_linear_LOSS = torch.mean(MSE_train_linear_LOSS)
-                    else: 
-                        MSE_trainbatch_linear_LOSS = self.loss_fn(x_out_training_batch, train_target_batch)
+                if(MaskOnState):                   
+                    MSE_trainbatch_linear_LOSS = self.loss_fn_train(x_out_training_batch[:,mask,:], train_target_batch[:,mask,:])
+                else: # no mask on state           
+                    MSE_trainbatch_linear_LOSS = self.loss_fn_train(x_out_training_batch, train_target_batch)
                             
 
                 # dB Loss
@@ -416,20 +406,10 @@ class Pipeline_structured:
                         
                     # Compute CV Loss
                     MSE_cvbatch_linear_LOSS = 0
-                    if(MaskOnState):
-                        if self.args.randomLength:
-                            for index in range(self.N_CV):
-                                MSE_cv_linear_LOSS[index] = self.loss_fn(x_out_cv_batch[index,mask,cv_lengthMask[i][index]], cv_target_tuple[i][0][index,mask,cv_lengthMask[index]])
-                            MSE_cvbatch_linear_LOSS = torch.mean(MSE_cv_linear_LOSS)
-                        else:          
-                            MSE_cvbatch_linear_LOSS = self.loss_fn(x_out_cv_batch[:,mask,:], cv_target_tuple[i][0][:,mask,:])
-                    else:
-                        if self.args.randomLength:
-                            for index in range(self.N_CV):
-                                MSE_cv_linear_LOSS[index] = self.loss_fn(x_out_cv_batch[index,:,cv_lengthMask[i][index]], cv_target_tuple[i][0][index,:,cv_lengthMask[index]])
-                            MSE_cvbatch_linear_LOSS = torch.mean(MSE_cv_linear_LOSS)
-                        else:
-                            MSE_cvbatch_linear_LOSS = self.loss_fn(x_out_cv_batch, cv_target_tuple[i][0])
+                    if(MaskOnState):                               
+                        MSE_cvbatch_linear_LOSS = self.loss_fn_cv(x_out_cv_batch[:,mask,:], cv_target_tuple[i][0][:,mask,:])
+                    else:                       
+                        MSE_cvbatch_linear_LOSS = self.loss_fn_cv(x_out_cv_batch, cv_target_tuple[i][0])
                         
                     # dB Loss
                     self.MSE_cv_linear_epoch[ti] = MSE_cvbatch_linear_LOSS.item()

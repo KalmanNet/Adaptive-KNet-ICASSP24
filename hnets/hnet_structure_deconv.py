@@ -9,6 +9,10 @@ import torch
 import torch.nn as nn
 import math
 
+class Flatten(nn.Module):
+    def forward(self, input):
+        return input.view(input.size(0), -1)
+    
 class hnet_structure_deconv(nn.Module):
     def __init__(self, SoW_len, output_sizes):
         super(hnet_structure_deconv, self).__init__()
@@ -31,17 +35,20 @@ class hnet_structure_deconv(nn.Module):
             if input_sizes[i] >= output_sizes[i]:
                 num_deconv_layers = 1
             else:
-                num_deconv_layers = math.ceil(math.log2(output_sizes[i] / input_sizes[i]))
+                num_deconv_layers = math.ceil(math.log(output_sizes[i] / input_sizes[i], 4))
 
             layers = []
-            
+            output_channels = input_sizes[i]
             for _ in range(num_deconv_layers):
-                deconv_layer = nn.ConvTranspose1d(1, 1, 2, stride=2)
+                input_channels = output_channels
+                output_channels = input_channels * 2
+                deconv_layer = nn.ConvTranspose1d(input_channels, output_channels, 2, stride=2)
                 layers.append(deconv_layer)
-                layers.append(nn.BatchNorm1d(1))
+                layers.append(nn.BatchNorm1d(output_channels))
                 layers.append(nn.ReLU(inplace=True))
             
-            input_size_linear = input_sizes[i] * (2 ** num_deconv_layers)
+            layers.append(Flatten())
+            input_size_linear = input_sizes[i] * (4 ** num_deconv_layers)
             layers.append(nn.Linear(input_size_linear, output_sizes[i]))
             deconv = nn.Sequential(*layers)
 
@@ -69,7 +76,7 @@ class hnet_structure_deconv(nn.Module):
                 deconv_idx = 5
             else:
                 deconv_idx = 6
-            input_tensor = input_tensor.view(1, 1, -1) # (batch size, in_channels, width)
+            input_tensor = input_tensor.view(1, -1, 1) # (batch size, in_channels, width)
             outputs.append(self.deconvs[deconv_idx](input_tensor))
 
         output_order = [
