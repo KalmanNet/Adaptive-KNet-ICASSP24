@@ -56,6 +56,9 @@ args.in_mult_KNet = 40
 args.out_mult_KNet = 5
 
 ### training parameters
+args.RobustScaler = False # if True, use Robust Scaling for the losses of different datasets
+args.WeightedMSE = False # if True, use weighted MSE loss for the losses of different datasets (assume known q^2 and r^2)
+
 args.wandb_switch = True
 if args.wandb_switch:
    import wandb
@@ -75,28 +78,24 @@ if args.hnet_arch == "GRU":
    args.hnet_hidden_size_discount = 10
 n_steps = 5000
 n_batch = 32 # will be multiplied by num of datasets
-lr = 1e-3
+lr = 1e-4
 wd = 1e-4
 
 ### True model
 # SoW
-SoW = torch.tensor([[0,0,1,1], [0,0,1,0.1], [0,0,1,0.01], [0,0,1,0.001],
-                    [0,0,0.1,1], [0,0,0.1,0.1], [0,0,0.1,0.01], [0,0,0.1,0.001],
-                    [0,0,0.01,1], [0,0,0.01,0.1], [0,0,0.01,0.01], [0,0,0.01,0.001],
-                    [0,0,0.001,1], [0,0,0.001,0.1], [0,0,0.001,0.01], [0,0,0.001,0.001]])
-SoW_train_range = list(range(len(SoW))) # first *** number of datasets are used for training
+SoW = torch.tensor([[1,1], [1,0.1], [1,0.01], [1,0.001],
+                    [0.1,1], [0.1,0.1], [0.1,0.01], [0.1,0.001],
+                    [0.01,1], [0.01,0.1], [0.01,0.01], [0.01,0.001],
+                    [0.001,1], [0.001,0.1], [0.001,0.01], [0.001,0.001]])
+SoW_train_range = list(range(len(SoW))) # these datasets are used for training
 print("SoW_train_range: ", SoW_train_range)
-SoW_test_range = list(range(len(SoW))) # last *** number of datasets are used for testing
+SoW_test_range = list(range(len(SoW))) # these datasets are used for testing
 # noise
-r2 = SoW[:, 2]
-q2 = SoW[:, 3]
+r2 = SoW[:, 0]
+q2 = SoW[:, 1]
 
-# Optional: change SoW to q2/r2 ratio
-if args.hnet_input_size == 2:
-   SoW = torch.zeros(len(SoW), 3)
-   SoW[:, 1] = torch.ones(len(SoW))
-   SoW[:, 2] = q2/r2
-   print("SoW: ", SoW)
+# change SoW to q2/r2 ratio
+SoW = q2/r2
 
 for i in range(len(SoW)):
    print(f"SoW of dataset {i}: ", SoW[i])
@@ -216,7 +215,7 @@ cm_weight_size = torch.tensor([cm_weight_size / 2]).int().item()
 if args.hnet_arch == "deconv":
    HyperNet_model = hnet_deconv(args, 1, cm_weight_size)
 elif args.hnet_arch == "GRU":
-   HyperNet_model = HyperNetwork(args, cm_weight_size)
+   HyperNet_model = HyperNetwork(args, 1, cm_weight_size)
 else:
    raise ValueError("Unknown hnet_arch")
 

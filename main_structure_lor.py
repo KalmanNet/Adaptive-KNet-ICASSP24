@@ -56,6 +56,9 @@ args.in_mult_KNet = 40
 args.out_mult_KNet = 5
 
 ### training parameters
+args.RobustScaler = False # if True, use Robust Scaling for the losses of different datasets
+args.WeightedMSE = False # if True, use weighted MSE loss for the losses of different datasets (assume known q^2 and r^2)
+
 args.wandb_switch = True
 if args.wandb_switch:
    import wandb
@@ -70,8 +73,6 @@ args.CompositionLoss = False
 # args.alpha = 0.5 # for CompositionLoss
 
 # training parameters for Hypernet
-args.RobustScaler = False # if True, use Robust Scaling for the losses of different datasets
-args.WeightedMSE = False # if True, use weighted MSE loss for the losses of different datasets (assume known q^2 and r^2)
 n_steps = 5000
 n_batch = 32 # will be multiplied by num of datasets
 lr = 1e-3
@@ -93,7 +94,6 @@ q2 = SoW[:, 1]
 
 # change SoW to q2/r2 ratio
 SoW = q2/r2
-print("SoW: ", SoW)
 
 for i in range(len(SoW)):
    print(f"SoW of dataset {i}: ", SoW[i])

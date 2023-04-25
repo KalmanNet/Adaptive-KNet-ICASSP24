@@ -11,6 +11,7 @@ from simulations.linear_canonical.parameters import F, H, Q_structure, R_structu
 from filters.KalmanFilter_test import KFTest
 
 from hnets.hnet import HyperNetwork
+from hnets.hnet_deconv import hnet_deconv
 from mnets.KNet_mnet import KalmanNetNN as KNet_mnet
 
 from pipelines.Pipeline_cm import Pipeline_cm
@@ -71,14 +72,16 @@ if args.wandb_switch:
 
 # training parameters for KNet
 args.knet_trainable = True
-args.in_mult_KNet = 40 # input dimension multiplier on the FC layers and LSTM layers of KNet
-# args.n_steps = 5000
-# args.n_batch = 64 
-# args.lr = 1e-3
-# args.wd = 1e-3
+# args.in_mult_KNet = 40 # input dimension multiplier on the FC layers and LSTM layers of KNet
+args.n_steps = 5000
+args.n_batch = 64 
+args.lr = 1e-3
+args.wd = 1e-3
 
 # training parameters for Hypernet
-args.hnet_input_size = 2 # [shift 0/gain 1, q2/r2 ratio]
+args.hnet_arch = "deconv" # "deconv" or "GRU
+if args.hnet_arch == "GRU": # settings for GRU hnet
+   args.hnet_hidden_size_discount = 100
 n_steps = 5000
 n_batch = 64  # will be multiplied by num of datasets
 lr = 1e-5
@@ -86,23 +89,16 @@ wd = 1e-3
 
 ### True model ##################################################
 # SoW
-SoW = torch.tensor([[0,0,10,10], [0,0,10,1], [0,0,10,0.1], [0,0,10,0.01],
-                    [0,0,1,10], [0,0,1,1], [0,0,1,0.1], [0,0,1,0.01],
-                    [0,0,0.1,10], [0,0,0.1,1], [0,0,0.1,0.1], [0,0,0.1,0.01],
-                    [0,0,0.01,10], [0,0,0.01,1], [0,0,0.01,0.1], [0,0,0.01,0.01]])
-SoW_train_range = list(range(len(SoW))) # first *** number of datasets are used for training
+SoW = torch.tensor([[10,0.01],[1,1],[0.01,10]]) # different q2/r2 ratios
+SoW_train_range = list(range(len(SoW))) # these datasets are used for training
 print("SoW_train_range: ", SoW_train_range)
-SoW_test_range = list(range(len(SoW))) # last *** number of datasets are used for testing
+SoW_test_range = list(range(len(SoW))) # these datasets are used for testing
 # noise
-r2 = SoW[:, 2]
-q2 = SoW[:, 3]
+r2 = SoW[:, 0]
+q2 = SoW[:, 1]
 
-# Optional: change SoW to q2/r2 ratio
-if args.hnet_input_size == 2:
-   SoW = torch.zeros(len(SoW), 3)
-   SoW[:, 1] = torch.ones(len(SoW))
-   SoW[:, 2] = q2/r2
-   print("SoW: ", SoW)
+# change SoW to q2/r2 ratio
+SoW = q2/r2
 
 for i in range(len(SoW)):
    print(f"SoW of dataset {i}: ", SoW[i])
@@ -153,14 +149,14 @@ for i in range(len(SoW)):
 ##############################
 ### Evaluate Kalman Filter ###
 ##############################
-# print("Evaluate Kalman Filter True")
-# for i in range(len(SoW)):
-#    test_input = test_input_list[i][0]
-#    test_target = test_target_list[i][0]
-#    test_init = test_init_list[i][0]  
-#    test_lengthMask = None 
-#    print(f"Dataset {i}") 
-#    [MSE_KF_linear_arr, MSE_KF_linear_avg, MSE_KF_dB_avg, KF_out] = KFTest(args, sys_model[i], test_input, test_target, test_lengthMask=test_lengthMask)
+print("Evaluate Kalman Filter True")
+for i in range(len(SoW)):
+   test_input = test_input_list[i][0]
+   test_target = test_target_list[i][0]
+   test_init = test_init_list[i][0]  
+   test_lengthMask = None 
+   print(f"Dataset {i}") 
+   [MSE_KF_linear_arr, MSE_KF_linear_avg, MSE_KF_dB_avg, KF_out] = KFTest(args, sys_model[i], test_input, test_target, test_lengthMask=test_lengthMask)
 
 
 ##################################
@@ -202,10 +198,16 @@ KalmanNet_model = KNet_mnet()
 cm_weight_size = KalmanNet_model.NNBuild(sys_model[0], args, frozen_weights=frozen_weights)
 print("Number of CM parameters:", cm_weight_size)
 
-if args.hnet_input_size == 2: # Split into gain and shift
-   cm_weight_size = torch.tensor([cm_weight_size / 2]).int().item()
+# Split into gain and shift
+cm_weight_size = torch.tensor([cm_weight_size / 2]).int().item()
 
-HyperNet_model = HyperNetwork(args, cm_weight_size)
+if args.hnet_arch == "deconv":
+   HyperNet_model = hnet_deconv(args, 1, cm_weight_size)
+elif args.hnet_arch == "GRU":
+   HyperNet_model = HyperNetwork(args, 1, cm_weight_size)
+else:
+   raise ValueError("Unknown hnet_arch")
+
 weight_size_hnet = sum(p.numel() for p in HyperNet_model.parameters() if p.requires_grad)
 print("Number of parameters for HyperNet:", weight_size_hnet)
 print("Total number of parameters:", cm_weight_size + weight_size_hnet)

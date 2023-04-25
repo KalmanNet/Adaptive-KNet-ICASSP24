@@ -24,6 +24,7 @@ class hnet_deconv(nn.Module):
             self.device = torch.device('cpu')
 
         input_size = 1 + SoW_len # 1 for shift/gain
+        self.position_embeddings = ["0", "1"] # shift/gain
         
         if input_size >= output_size:
             raise ValueError('input_size must be smaller than output_size')
@@ -46,9 +47,15 @@ class hnet_deconv(nn.Module):
         layers.append(nn.Linear(input_size_linear, output_size))
         self.deconv = nn.Sequential(*layers)
 
-    def forward(self, input_tensor):
-        input_tensor = input_tensor.view(1, -1, 1) # (batch size, in_channels, width)
-        outputs = self.deconv(input_tensor)
+    def forward(self, SoW):
+        input_tensors = [torch.tensor([float(ch) for ch in pe] + [SoW], dtype=torch.float32) for pe in self.position_embeddings]
+        
+        # Reuse MLPs for the corresponding input tensors
+        outputs = []
+        for input_tensor in input_tensors:
+            input_tensor = input_tensor.view(1, -1, 1) # (batch size, in_channels, width)
+            y = self.deconv(input_tensor)
+            outputs.append(torch.squeeze(y,0))
 
-        return torch.squeeze(outputs,0)
+        return outputs
 
