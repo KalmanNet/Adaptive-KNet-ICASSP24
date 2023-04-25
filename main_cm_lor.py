@@ -10,6 +10,7 @@ from simulations.lorenz_attractor.parameters import m1x_0, m2x_0, m, n,\
 f, h, h_nonlinear, Q_structure, R_structure
 
 from hnets.hnet import HyperNetwork
+from hnets.hnet_deconv import hnet_deconv
 from mnets.KNet_mnet import KalmanNetNN as KNet_mnet
 
 from pipelines.Pipeline_cm import Pipeline_cm
@@ -68,9 +69,12 @@ args.wd = 1e-3
 args.CompositionLoss = True
 args.alpha = 0.5
 # training parameters for Hypernet
-args.hnet_input_size = 2 # [shift 0/gain 1, q2/r2 ratio]
+args.hnet_arch = "deconv"
+if args.hnet_arch == "GRU":
+   args.hnet_input_size = 2 # [shift 0/gain 1, q2/r2 ratio]
+   args.hnet_hidden_size_discount = 10
 n_steps = 5000
-n_batch = 512 # will be multiplied by num of datasets
+n_batch = 32 # will be multiplied by num of datasets
 lr = 1e-3
 wd = 1e-4
 
@@ -170,28 +174,28 @@ for i in range(len(SoW)):
 ### Hyper - KalmanNet Pipeline ###
 ##################################
 ### train and test KalmanNet
-print("KalmanNet pipeline start")
-KalmanNet_model = KNet_mnet()
-KalmanNet_model.NNBuild(sys_model[0], args)
-print("Number of trainable parameters for KalmanNet:",sum(p.numel() for p in KalmanNet_model.parameters() if p.requires_grad))
-## Train Neural Network
-KalmanNet_Pipeline = Pipeline_EKF(strTime, "KNet", "KalmanNet")
-KalmanNet_Pipeline.setssModel(sys_model[0])
-KalmanNet_Pipeline.setModel(KalmanNet_model)
-KalmanNet_Pipeline.setTrainingParams(args)
-KalmanNet_Pipeline.NNTrain_mixdatasets(SoW_train_range, sys_model, cv_input_list, cv_target_list, train_input_list, train_target_list, path_results,cv_init_list,train_init_list)
-## Test Neural Network on all datasets
-for i in range(len(SoW)):
-   test_input = test_input_list[i][0]
-   test_target = test_target_list[i][0]
-   test_init = test_init_list[i][0]  
-   test_lengthMask = None 
-   print(f"Dataset {i}") 
-   KalmanNet_Pipeline.NNTest(sys_model[i], test_input_list[i][0], test_target_list[i][0], path_results)
+# print("KalmanNet pipeline start")
+# KalmanNet_model = KNet_mnet()
+# KalmanNet_model.NNBuild(sys_model[0], args)
+# print("Number of trainable parameters for KalmanNet:",sum(p.numel() for p in KalmanNet_model.parameters() if p.requires_grad))
+# ## Train Neural Network
+# KalmanNet_Pipeline = Pipeline_EKF(strTime, "KNet", "KalmanNet")
+# KalmanNet_Pipeline.setssModel(sys_model[0])
+# KalmanNet_Pipeline.setModel(KalmanNet_model)
+# KalmanNet_Pipeline.setTrainingParams(args)
+# KalmanNet_Pipeline.NNTrain_mixdatasets(SoW_train_range, sys_model, cv_input_list, cv_target_list, train_input_list, train_target_list, path_results,cv_init_list,train_init_list)
+# ## Test Neural Network on all datasets
+# for i in range(len(SoW)):
+#    test_input = test_input_list[i][0]
+#    test_target = test_target_list[i][0]
+#    test_init = test_init_list[i][0]  
+#    test_lengthMask = None 
+#    print(f"Dataset {i}") 
+#    KalmanNet_Pipeline.NNTest(sys_model[i], test_input_list[i][0], test_target_list[i][0], path_results)
 
 
 # load frozen weights
-frozen_weights = torch.load(path_results + 'knet_best-model.pt', map_location=device) 
+frozen_weights = torch.load(path_results + 'knet_best-model_30dB_trainonall16.pt', map_location=device) 
 ### frozen KNet weights, train hypernet to generate CM weights on multiple datasets
 args.knet_trainable = False # frozen KNet weights
 args.use_context_mod = True # use CM
@@ -206,10 +210,16 @@ KalmanNet_model = KNet_mnet()
 cm_weight_size = KalmanNet_model.NNBuild(sys_model[0], args, frozen_weights=frozen_weights)
 print("Number of CM parameters:", cm_weight_size)
 
-if args.hnet_input_size == 2: # Split into gain and shift
-   cm_weight_size = torch.tensor([cm_weight_size / 2]).int().item()
+# Split into gain and shift
+cm_weight_size = torch.tensor([cm_weight_size / 2]).int().item()
 
-HyperNet_model = HyperNetwork(args, cm_weight_size)
+if args.hnet_arch == "deconv":
+   HyperNet_model = hnet_deconv(args, 1, cm_weight_size)
+elif args.hnet_arch == "GRU":
+   HyperNet_model = HyperNetwork(args, cm_weight_size)
+else:
+   raise ValueError("Unknown hnet_arch")
+
 weight_size_hnet = sum(p.numel() for p in HyperNet_model.parameters() if p.requires_grad)
 print("Number of parameters for HyperNet:", weight_size_hnet)
 print("Total number of parameters:", cm_weight_size + weight_size_hnet)

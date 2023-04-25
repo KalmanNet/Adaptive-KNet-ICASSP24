@@ -55,8 +55,8 @@ class Pipeline_cm:
         cv_init, train_init, MaskOnState=False, train_lengthMask=None,cv_lengthMask=None):
         
         ### Optional: start training from previous checkpoint
-        hnet_model_weights = torch.load(path_results+'hnet_best-model.pt', map_location=self.device) 
-        self.hnet.load_state_dict(hnet_model_weights)
+        # hnet_model_weights = torch.load(path_results+'hnet_best-model.pt', map_location=self.device) 
+        # self.hnet.load_state_dict(hnet_model_weights)
         
         if self.args.wandb_switch: 
             import wandb
@@ -101,7 +101,8 @@ class Pipeline_cm:
                 # Init Sequence
                 train_init_batch = torch.empty([self.N_B, sysmdl_m,1]).to(self.device)
                 # Init Hidden State
-                self.hnet.init_hidden()
+                if self.args.hnet_arch == "GRU":
+                    self.hnet.init_hidden()
                 self.mnet.init_hidden()  
                 # SoW: make sure SoWs are consistent
                 assert torch.allclose(cv_input_tuple[i][1], cv_target_tuple[i][1]) 
@@ -199,7 +200,8 @@ class Pipeline_cm:
                     # Init Output
                     x_out_cv_batch = torch.empty([self.N_CV, sysmdl_m, sysmdl_T_test]).to(self.device)
                     # Init Hidden State
-                    self.hnet.init_hidden()
+                    if self.args.hnet_arch == "GRU":
+                        self.hnet.init_hidden()
                     self.mnet.init_hidden()
                     # Init Sequence                    
                     self.mnet.InitSequence(cv_init[i], sysmdl_T_test)                       
@@ -312,7 +314,8 @@ class Pipeline_cm:
             self.mnet.eval()
             self.mnet.batch_size = self.N_T
             # Init Hidden State
-            self.hnet.init_hidden()
+            if self.args.hnet_arch == "GRU":
+                self.hnet.init_hidden()
             self.mnet.init_hidden()
 
             torch.no_grad()
