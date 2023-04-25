@@ -24,13 +24,13 @@ class WeightedMSELoss(nn.Module):
         # Calculate the trace of Q and R matrices
         Q_trace = torch.trace(Q)
         R_trace = torch.trace(R)
+        noise_floor = torch.min(Q_trace, R_trace)
 
         # Calculate the weights based on the inverse of the traces
-        Q_weight = 1 / Q_trace
-        R_weight = 1 / R_trace
+        noise_weight = 1 / noise_floor
 
         # Compute the weighted MSE loss using the calculated weights
-        weighted_residuals = Q_weight * R_weight * (residuals ** 2)
+        weighted_residuals = noise_weight * (residuals ** 2)
         weighted_mse_loss = torch.mean(weighted_residuals)
 
         return weighted_mse_loss
@@ -84,12 +84,12 @@ class WeightedHuberIQRScalingLoss(nn.Module):
         # Calculate the trace of Q and R matrices
         Q_trace = torch.trace(Q)
         R_trace = torch.trace(R)
+        noise_floor = torch.min(Q_trace, R_trace)
 
         # Calculate the weights based on the inverse of the traces
-        Q_weight = 1 / Q_trace
-        R_weight = 1 / R_trace
+        noise_weight = 1 / noise_floor
 
-        weighted_scaled_residuals = Q_weight * R_weight * scaled_residuals
+        weighted_scaled_residuals = noise_weight * scaled_residuals
 
         # Compute the Huber loss using the scaled residuals
         abs_residuals = torch.abs(weighted_scaled_residuals)

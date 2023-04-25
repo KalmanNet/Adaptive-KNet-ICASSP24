@@ -21,13 +21,13 @@ class WeightedMSELoss(nn.Module):
         # Calculate the trace of Q and R matrices
         Q_trace = torch.trace(Q)
         R_trace = torch.trace(R)
+        noise_floor = torch.min(Q_trace, R_trace)
 
         # Calculate the weights based on the inverse of the traces
-        Q_weight = 1 / Q_trace
-        R_weight = 1 / R_trace
+        noise_weight = 1 / noise_floor
 
         # Compute the weighted MSE loss using the calculated weights
-        weighted_residuals = Q_weight * R_weight * (residuals ** 2)
+        weighted_residuals = noise_weight * (residuals ** 2)
         weighted_mse_loss = torch.mean(weighted_residuals)
 
         return weighted_mse_loss
@@ -81,12 +81,12 @@ class WeightedHuberIQRScalingLoss(nn.Module):
         # Calculate the trace of Q and R matrices
         Q_trace = torch.trace(Q)
         R_trace = torch.trace(R)
+        noise_floor = torch.min(Q_trace, R_trace)
 
         # Calculate the weights based on the inverse of the traces
-        Q_weight = 1 / Q_trace
-        R_weight = 1 / R_trace
+        noise_weight = 1 / noise_floor
 
-        weighted_scaled_residuals = Q_weight * R_weight * scaled_residuals
+        weighted_scaled_residuals = noise_weight * scaled_residuals
 
         # Compute the Huber loss using the scaled residuals
         abs_residuals = torch.abs(weighted_scaled_residuals)
@@ -461,8 +461,8 @@ class Pipeline_EKF:
         cv_init, train_init, MaskOnState=False, train_lengthMask=None,cv_lengthMask=None):
 
         ### Optional: start training from previous checkpoint
-        # model_weights = torch.load(path_results+'knet_best-model.pt', map_location=self.device) 
-        # self.model.load_state_dict(model_weights)
+        model_weights = torch.load(path_results+'knet_best-model.pt', map_location=self.device) 
+        self.model.load_state_dict(model_weights)
 
         if self.args.wandb_switch: 
             import wandb
@@ -570,12 +570,12 @@ class Pipeline_EKF:
                             MSE_trainbatch_linear_LOSS[i] = self.alpha * self.loss_fn_train(x_out_training_batch, train_target_batch)+(1-self.alpha)*self.loss_fn_train(y_hat, y_training_batch)
                 else:# no composition loss
                     if(MaskOnState):
-                        if self.args.randomLength:
+                        if self.args.WeightedMSE:
                             MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(x_out_training_batch[:,mask,:], train_target_batch[:,mask,:], SysModel[i].Q, SysModel[i].R)
                         else:
                             MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(x_out_training_batch[:,mask,:], train_target_batch[:,mask,:])
                     else: # no mask on state
-                        if self.args.randomLength:
+                        if self.args.WeightedMSE:
                             MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(x_out_training_batch, train_target_batch, SysModel[i].Q, SysModel[i].R)
                         else:
                             MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(x_out_training_batch, train_target_batch)
