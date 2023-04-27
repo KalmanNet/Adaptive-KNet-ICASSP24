@@ -72,24 +72,34 @@ if args.wandb_switch:
 
 # training parameters for KNet
 args.knet_trainable = True
-# args.in_mult_KNet = 40 # input dimension multiplier on the FC layers and LSTM layers of KNet
+# depending on m and n, scale the input and output dimension multiplier on the FC layers and LSTM layers of KNet 
+args.in_mult_KNet = 40
+# args.out_mult_KNet = 5
 args.n_steps = 5000
 args.n_batch = 64 
-args.lr = 1e-3
+args.lr = 1e-4
 args.wd = 1e-3
 
 # training parameters for Hypernet
 args.hnet_arch = "deconv" # "deconv" or "GRU
 if args.hnet_arch == "GRU": # settings for GRU hnet
    args.hnet_hidden_size_discount = 100
+elif args.hnet_arch == "deconv": # settings for deconv hnet
+   num_deconv_layers = 2
+else:
+   raise Exception("args.hnet_arch not recognized")
 n_steps = 5000
 n_batch = 64  # will be multiplied by num of datasets
-lr = 1e-5
+lr = 1e-3
 wd = 1e-3
 
 ### True model ##################################################
 # SoW
-SoW = torch.tensor([[10,0.01],[1,1],[0.01,10]]) # different q2/r2 ratios
+SoW = torch.tensor([[10,10], [10,1], [10,0.1], [10,0.01],
+                    [1,10], [1,1], [1,0.1], [1,0.01],
+                    [0.1,10], [0.1,1], [0.1,0.1], [0.1,0.01],
+                    [0.01,10], [0.01,1], [0.01,0.1], [0.01,0.01]])
+# SoW = torch.tensor([[10,0.01],[1,1],[0.01,10]]) # different q2/r2 ratios
 SoW_train_range = list(range(len(SoW))) # these datasets are used for training
 print("SoW_train_range: ", SoW_train_range)
 SoW_test_range = list(range(len(SoW))) # these datasets are used for testing
@@ -112,11 +122,14 @@ for i in range(len(SoW)):
    sys_model.append(sys_model_i)
 
 ### paths ##################################################
-path_results = 'simulations/linear_canonical/results/'
+path_results = 'simulations/linear_canonical/results/2x2/'
 dataFolderName = 'data/linear_canonical/30dB' + '/'
 dataFileName = []
+rounding_digits = 4 # round to # digits after decimal point
 for i in range(len(SoW)):
-   dataFileName.append('r2=' + str(r2[i].item())+"_" +"q2="+ str(q2[i].item())+ '.pt')
+   r2_rounded = round(r2[i].item() * 10**rounding_digits) / 10**rounding_digits
+   q2_rounded = round(q2[i].item() * 10**rounding_digits) / 10**rounding_digits
+   dataFileName.append('r2=' + str(r2_rounded)+"_" +"q2="+ str(q2_rounded)+ '.pt')
 ###################################
 ### Data Loader (Generate Data) ###
 ###################################
@@ -149,41 +162,41 @@ for i in range(len(SoW)):
 ##############################
 ### Evaluate Kalman Filter ###
 ##############################
-print("Evaluate Kalman Filter True")
-for i in range(len(SoW)):
-   test_input = test_input_list[i][0]
-   test_target = test_target_list[i][0]
-   test_init = test_init_list[i][0]  
-   test_lengthMask = None 
-   print(f"Dataset {i}") 
-   [MSE_KF_linear_arr, MSE_KF_linear_avg, MSE_KF_dB_avg, KF_out] = KFTest(args, sys_model[i], test_input, test_target, test_lengthMask=test_lengthMask)
+# print("Evaluate Kalman Filter True")
+# for i in range(len(SoW)):
+#    test_input = test_input_list[i][0]
+#    test_target = test_target_list[i][0]
+#    test_init = test_init_list[i][0]  
+#    test_lengthMask = None 
+#    print(f"Dataset {i}") 
+#    [MSE_KF_linear_arr, MSE_KF_linear_avg, MSE_KF_dB_avg, KF_out] = KFTest(args, sys_model[i], test_input, test_target, test_lengthMask=test_lengthMask)
 
 
 ##################################
 ### Hyper - KalmanNet Pipeline ###
 ##################################
 ## train and test KalmanNet
-print("KalmanNet pipeline start")
-KalmanNet_model = KNet_mnet()
-KalmanNet_model.NNBuild(sys_model[0], args)
-print("Number of trainable parameters for KalmanNet:",sum(p.numel() for p in KalmanNet_model.parameters() if p.requires_grad))
-## Train Neural Network
-KalmanNet_Pipeline = Pipeline_EKF(strTime, "KNet", "KalmanNet")
-KalmanNet_Pipeline.setssModel(sys_model[0])
-KalmanNet_Pipeline.setModel(KalmanNet_model)
-KalmanNet_Pipeline.setTrainingParams(args)
-KalmanNet_Pipeline.NNTrain_mixdatasets(SoW_train_range, sys_model, cv_input_list, cv_target_list, train_input_list, train_target_list, path_results,cv_init_list,train_init_list)
-## Test Neural Network on all datasets
-for i in range(len(SoW)):
-   test_input = test_input_list[i][0]
-   test_target = test_target_list[i][0]
-   test_init = test_init_list[i][0]  
-   test_lengthMask = None 
-   print(f"Dataset {i}") 
-   KalmanNet_Pipeline.NNTest(sys_model[i], test_input_list[i][0], test_target_list[i][0], path_results)
+# print("KalmanNet pipeline start")
+# KalmanNet_model = KNet_mnet()
+# KalmanNet_model.NNBuild(sys_model[0], args)
+# print("Number of trainable parameters for KalmanNet:",sum(p.numel() for p in KalmanNet_model.parameters() if p.requires_grad))
+# ## Train Neural Network
+# KalmanNet_Pipeline = Pipeline_EKF(strTime, "KNet", "KalmanNet")
+# KalmanNet_Pipeline.setssModel(sys_model[0])
+# KalmanNet_Pipeline.setModel(KalmanNet_model)
+# KalmanNet_Pipeline.setTrainingParams(args)
+# # KalmanNet_Pipeline.NNTrain_mixdatasets(SoW_train_range, sys_model, cv_input_list, cv_target_list, train_input_list, train_target_list, path_results,cv_init_list,train_init_list)
+# ## Test Neural Network on all datasets
+# for i in range(len(SoW)):
+#    test_input = test_input_list[i][0]
+#    test_target = test_target_list[i][0]
+#    test_init = test_init_list[i][0]  
+#    test_lengthMask = None 
+#    print(f"Dataset {i}") 
+#    KalmanNet_Pipeline.NNTest(sys_model[i], test_input_list[i][0], test_target_list[i][0], path_results)
 
 # load frozen weights
-frozen_weights = torch.load(path_results + 'knet_best-model_30dB_trainonall16_inmult=40.pt', map_location=device) 
+frozen_weights = torch.load(path_results + 'knet_best-model.pt', map_location=device) 
 ### frozen KNet weights, train hypernet to generate CM weights on multiple datasets
 args.knet_trainable = False # frozen KNet weights
 args.use_context_mod = True # use CM
@@ -202,7 +215,7 @@ print("Number of CM parameters:", cm_weight_size)
 cm_weight_size = torch.tensor([cm_weight_size / 2]).int().item()
 
 if args.hnet_arch == "deconv":
-   HyperNet_model = hnet_deconv(args, 1, cm_weight_size)
+   HyperNet_model = hnet_deconv(args, 1, cm_weight_size, num_deconv_layers=num_deconv_layers)
 elif args.hnet_arch == "GRU":
    HyperNet_model = HyperNetwork(args, 1, cm_weight_size)
 else:

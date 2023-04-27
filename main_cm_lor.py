@@ -74,12 +74,11 @@ args.alpha = 0.5
 # training parameters for Hypernet
 args.hnet_arch = "deconv"
 if args.hnet_arch == "GRU":
-   args.hnet_input_size = 2 # [shift 0/gain 1, q2/r2 ratio]
    args.hnet_hidden_size_discount = 10
 n_steps = 5000
 n_batch = 32 # will be multiplied by num of datasets
-lr = 1e-4
-wd = 1e-4
+lr = 5e-4
+wd = 1e-3
 
 ### True model
 # SoW
@@ -112,8 +111,11 @@ path_results = 'simulations/lorenz_attractor/results/'
 DatafolderName = 'data/lorenz_attractor/30dB/'
 # traj_resultName = ['traj_lorDT_NLobs_rq3030_T20.pt']
 dataFileName = []
+rounding_digits = 4 # round to # digits after decimal point
 for i in range(len(SoW)):
-   dataFileName.append('r2=' + str(r2[i].item())+"_" +"q2="+ str(q2[i].item())+ '.pt')
+   r2_rounded = round(r2[i].item() * 10**rounding_digits) / 10**rounding_digits
+   q2_rounded = round(q2[i].item() * 10**rounding_digits) / 10**rounding_digits
+   dataFileName.append('r2=' + str(r2_rounded)+"_" +"q2="+ str(q2_rounded)+ '.pt')
 
 #########################################
 ###  Generate and load data DT case   ###

@@ -15,7 +15,7 @@ class Flatten(nn.Module):
         return input.view(input.size(0), -1)
 
 class hnet_deconv(nn.Module):
-    def __init__(self, args, SoW_len, output_size):
+    def __init__(self, args, SoW_len, output_size, num_deconv_layers=None):
         super(hnet_deconv, self).__init__()
         # Device
         if args.use_cuda:
@@ -29,7 +29,8 @@ class hnet_deconv(nn.Module):
         if input_size >= output_size:
             raise ValueError('input_size must be smaller than output_size')
         
-        num_deconv_layers = math.ceil(math.log(output_size / input_size, 2)) # assume that output_size is always larger than input_size
+        if num_deconv_layers is None: # if not specified, calculate the number of deconv layers needed
+            num_deconv_layers = math.ceil(math.log(output_size / input_size, 2)) # assume that output_size is always larger than input_size
 
         layers = []
         output_channels = input_size

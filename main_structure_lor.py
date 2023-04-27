@@ -109,8 +109,11 @@ for i in range(len(SoW)):
 path_results = 'simulations/lorenz_attractor/results/'
 DatafolderName = 'data/lorenz_attractor/30dB/'
 dataFileName = []
+rounding_digits = 4 # round to # digits after decimal point
 for i in range(len(SoW)):
-   dataFileName.append('r2=' + str(r2[i].item())+"_" +"q2="+ str(q2[i].item())+ '.pt')
+   r2_rounded = round(r2[i].item() * 10**rounding_digits) / 10**rounding_digits
+   q2_rounded = round(q2[i].item() * 10**rounding_digits) / 10**rounding_digits
+   dataFileName.append('r2=' + str(r2_rounded)+"_" +"q2="+ str(q2_rounded)+ '.pt')
 
 #########################################
 ###  Generate and load data DT case   ###
