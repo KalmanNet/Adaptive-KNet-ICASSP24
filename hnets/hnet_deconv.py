@@ -22,12 +22,12 @@ class ContextPositionEmbedding(nn.Module):
 
     def forward(self, position, context):
         position_emb = self.position_embedding(position)
-        context_emb = self.context_embedding(context)
+        context_emb = self.context_embedding(context.unsqueeze(0))
 
         # Concatenate embeddings along the channel dimension
-        combined_emb = torch.cat((context_emb, position_emb), dim=1).unsqueeze(2)
+        combined_emb = torch.cat((context_emb.unsqueeze(0), position_emb.unsqueeze(0)), dim=0).unsqueeze(0)
 
-        return combined_emb # [batch_size, channel=2, embedding_dim]
+        return combined_emb # [batch_size=1, channel=2, embedding_dim]
 
 
 class hnet_deconv(nn.Module):
@@ -51,26 +51,42 @@ class hnet_deconv(nn.Module):
         self.embedding_layer = ContextPositionEmbedding(SoW_len, embedding_dim)
 
         self.deconv_layers = []
-        deconv_layer1 = nn.ConvTranspose1d( # revert to high dimension
-                                in_channels=2, 
-                                out_channels=hidden_channel_dim, 
-                                kernel_size=3, 
-                                stride=1,
-                                padding=1)
-        self.deconv_layers.append(deconv_layer1)
-        self.deconv_layers.append(nn.BatchNorm1d(hidden_channel_dim))
-        self.deconv_layers.append(nn.ReLU(inplace=True))
+        num_deconv_layers_scaleup_channel = math.floor(math.log(hidden_channel_dim / 2, 2))
+        out_channel = 2 # 2 for position and context
+        for _ in range(num_deconv_layers_scaleup_channel):
+            in_channel = out_channel
+            out_channel = in_channel * 2
+            deconv_layer = nn.ConvTranspose1d( # revert to high dimension
+                                    in_channels=in_channel, 
+                                    out_channels=out_channel, 
+                                    kernel_size=3, 
+                                    stride=1,
+                                    padding=1)
+            self.deconv_layers.append(deconv_layer)
+            self.deconv_layers.append(nn.ReLU(inplace=True))
+        # Final deconv layer for scaling up the channel dimension
+        deconv_layer = nn.ConvTranspose1d( # revert to high dimension
+                                    in_channels=out_channel,
+                                    out_channels=hidden_channel_dim,
+                                    kernel_size=3,
+                                    stride=1,
+                                    padding=1)
+        self.deconv_layers.append(deconv_layer)
+
 
         num_deconv_layers = math.floor(math.log(output_size / embedding_dim, 2))
+        out_channel = hidden_channel_dim
         for _ in range(num_deconv_layers):
-            deconv_layer = nn.ConvTranspose1d( # each deconv layer doubles the input size
-                                in_channels=hidden_channel_dim, 
-                                out_channels=hidden_channel_dim, 
+            in_channel = out_channel
+            out_channel = math.ceil(in_channel / 2)
+            deconv_layer = nn.ConvTranspose1d( # each deconv layer doubles the input size, but cut half the channel dim
+                                in_channels=in_channel, 
+                                out_channels=out_channel, 
                                 kernel_size=4, 
                                 stride=2, 
                                 padding=1)
             self.deconv_layers.append(deconv_layer)
-            self.deconv_layers.append(nn.BatchNorm1d(hidden_channel_dim))
+            # self.deconv_layers.append(nn.BatchNorm1d(out_channel))
             self.deconv_layers.append(nn.ReLU(inplace=True))
             # self.layers.append(nn.Dropout(p=0.5))
         
@@ -80,7 +96,7 @@ class hnet_deconv(nn.Module):
         stride = 1
         padding = 0
         output_padding = 0
-        self.deconv_layers.append(nn.ConvTranspose1d(hidden_channel_dim, 1, kernel_size, stride, padding, output_padding))
+        self.deconv_layers.append(nn.ConvTranspose1d(out_channel, 1, kernel_size, stride, padding, output_padding))
                                                                
         self.deconv = nn.Sequential(*self.deconv_layers)
 
@@ -90,7 +106,7 @@ class hnet_deconv(nn.Module):
         for pe in self.position_embeddings:
             y = self.embedding_layer(pe, SoW)
             y = self.deconv(y)
-            outputs.append(torch.squeeze(y,0))
+            outputs.append(torch.squeeze(y))
 
         return outputs
 

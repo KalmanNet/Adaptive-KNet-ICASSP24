@@ -85,13 +85,14 @@ args.hnet_arch = "deconv" # "deconv" or "GRU
 if args.hnet_arch == "GRU": # settings for GRU hnet
    args.hnet_hidden_size_discount = 100
 elif args.hnet_arch == "deconv": # settings for deconv hnet
+   # 2x2 system
    embedding_dim = 8
-   hidden_channel_dim = 16
+   hidden_channel_dim = 32
 else:
    raise Exception("args.hnet_arch not recognized")
 n_steps = 5000
-n_batch = 64  # will be multiplied by num of datasets
-lr = 1e-3
+n_batch = 32  # will be multiplied by num of datasets
+lr = 1e-4
 wd = 1e-3
 
 ### True model ##################################################
