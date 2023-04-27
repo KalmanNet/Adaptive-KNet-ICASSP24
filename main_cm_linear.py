@@ -33,7 +33,7 @@ print("Current Time =", strTime)
 ### Parameter Setting ###
 #########################
 args = config.general_settings()
-args.use_cuda = True # use GPU or not
+args.use_cuda = False # use GPU or not
 if args.use_cuda:
    if torch.cuda.is_available():
       device = torch.device('cuda')
@@ -65,7 +65,7 @@ cv_lengthMask = None
 test_lengthMask = None
 
 ### training parameters ##################################################
-args.wandb_switch = True
+args.wandb_switch = False
 if args.wandb_switch:
    import wandb
    wandb.init(project="HKNet_Linear")
@@ -85,7 +85,8 @@ args.hnet_arch = "deconv" # "deconv" or "GRU
 if args.hnet_arch == "GRU": # settings for GRU hnet
    args.hnet_hidden_size_discount = 100
 elif args.hnet_arch == "deconv": # settings for deconv hnet
-   num_deconv_layers = 2
+   embedding_dim = 8
+   hidden_channel_dim = 16
 else:
    raise Exception("args.hnet_arch not recognized")
 n_steps = 5000
@@ -215,15 +216,13 @@ print("Number of CM parameters:", cm_weight_size)
 cm_weight_size = torch.tensor([cm_weight_size / 2]).int().item()
 
 if args.hnet_arch == "deconv":
-   HyperNet_model = hnet_deconv(args, 1, cm_weight_size, num_deconv_layers=num_deconv_layers)
+   HyperNet_model = hnet_deconv(args, 1, cm_weight_size, embedding_dim=embedding_dim, hidden_channel_dim = hidden_channel_dim)
 elif args.hnet_arch == "GRU":
    HyperNet_model = HyperNetwork(args, 1, cm_weight_size)
 else:
    raise ValueError("Unknown hnet_arch")
 
-weight_size_hnet = sum(p.numel() for p in HyperNet_model.parameters() if p.requires_grad)
-print("Number of parameters for HyperNet:", weight_size_hnet)
-print("Total number of parameters:", cm_weight_size + weight_size_hnet)
+weight_size_hnet = HyperNet_model.print_num_weights()
 ## Set up pipeline
 hknet_pipeline = Pipeline_cm(strTime, "pipelines", "hknet")
 hknet_pipeline.setModel(HyperNet_model, KalmanNet_model)
