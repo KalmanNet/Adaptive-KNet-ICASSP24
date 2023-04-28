@@ -84,16 +84,19 @@ args.wd = 1e-3
 args.hnet_arch = "deconv" # "deconv" or "GRU
 if args.hnet_arch == "GRU": # settings for GRU hnet
    args.hnet_hidden_size_discount = 100
+   lr = 1e-4
+   wd = 1e-3
 elif args.hnet_arch == "deconv": # settings for deconv hnet
    # 2x2 system
-   embedding_dim = 8
+   embedding_dim = 4
    hidden_channel_dim = 32
+   lr = 1e-2
+   wd = 1e-3
 else:
    raise Exception("args.hnet_arch not recognized")
 n_steps = 5000
 n_batch = 32  # will be multiplied by num of datasets
-lr = 1e-4
-wd = 1e-3
+
 
 ### True model ##################################################
 # SoW
@@ -218,12 +221,14 @@ cm_weight_size = torch.tensor([cm_weight_size / 2]).int().item()
 
 if args.hnet_arch == "deconv":
    HyperNet_model = hnet_deconv(args, 1, cm_weight_size, embedding_dim=embedding_dim, hidden_channel_dim = hidden_channel_dim)
+   weight_size_hnet = HyperNet_model.print_num_weights()
 elif args.hnet_arch == "GRU":
    HyperNet_model = HyperNetwork(args, 1, cm_weight_size)
+   weight_size_hnet = sum(p.numel() for p in HyperNet_model.parameters() if p.requires_grad)
+   print("Number of parameters for HyperNet:", weight_size_hnet)
 else:
    raise ValueError("Unknown hnet_arch")
 
-weight_size_hnet = HyperNet_model.print_num_weights()
 ## Set up pipeline
 hknet_pipeline = Pipeline_cm(strTime, "pipelines", "hknet")
 hknet_pipeline.setModel(HyperNet_model, KalmanNet_model)

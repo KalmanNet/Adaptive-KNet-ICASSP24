@@ -31,7 +31,7 @@ print("Current Time =", strTime)
 ###  Settings   ###
 ###################
 args = config.general_settings()
-args.use_cuda = True # use GPU or not
+args.use_cuda = False # use GPU or not
 if args.use_cuda:
    if torch.cuda.is_available():
       device = torch.device('cuda')
@@ -59,7 +59,7 @@ args.out_mult_KNet = 5
 args.RobustScaler = False # if True, use Robust Scaling for the losses of different datasets
 args.WeightedMSE = False # if True, use weighted MSE loss for the losses of different datasets (assume known q^2 and r^2)
 
-args.wandb_switch = True
+args.wandb_switch = False
 if args.wandb_switch:
    import wandb
    wandb.init(project="HKNet_Lor")
@@ -77,7 +77,7 @@ if args.hnet_arch == "GRU":
    args.hnet_hidden_size_discount = 10
 elif args.hnet_arch == "deconv": # settings for deconv hnet
    embedding_dim = 8
-   hidden_channel_dim = 32
+   hidden_channel_dim = 64
 else:
    raise Exception("args.hnet_arch not recognized")
 n_steps = 5000
@@ -87,10 +87,11 @@ wd = 1e-3
 
 ### True model
 # SoW
-SoW = torch.tensor([[1,1], [1,0.1], [1,0.01], [1,0.001],
-                    [0.1,1], [0.1,0.1], [0.1,0.01], [0.1,0.001],
-                    [0.01,1], [0.01,0.1], [0.01,0.01], [0.01,0.001],
-                    [0.001,1], [0.001,0.1], [0.001,0.01], [0.001,0.001]])
+# SoW = torch.tensor([[1,1], [1,0.1], [1,0.01], [1,0.001],
+#                     [0.1,1], [0.1,0.1], [0.1,0.01], [0.1,0.001],
+#                     [0.01,1], [0.01,0.1], [0.01,0.01], [0.01,0.001],
+#                     [0.001,1], [0.001,0.1], [0.001,0.01], [0.001,0.001]])
+SoW = torch.tensor([[1,0.1], [0.1,0.1],[0.01,0.1]]) # different SoW
 SoW_train_range = list(range(len(SoW))) # these datasets are used for training
 print("SoW_train_range: ", SoW_train_range)
 SoW_test_range = list(range(len(SoW))) # these datasets are used for testing
@@ -220,13 +221,15 @@ print("Number of CM parameters:", cm_weight_size)
 cm_weight_size = torch.tensor([cm_weight_size / 2]).int().item()
 
 if args.hnet_arch == "deconv":
-   HyperNet_model = hnet_deconv(args, 1, cm_weight_size, embedding_dim=embedding_dim, hidden_channel_dim=hidden_channel_dim)
+   HyperNet_model = hnet_deconv(args, 1, cm_weight_size, embedding_dim=embedding_dim, hidden_channel_dim = hidden_channel_dim)
+   weight_size_hnet = HyperNet_model.print_num_weights()
 elif args.hnet_arch == "GRU":
    HyperNet_model = HyperNetwork(args, 1, cm_weight_size)
+   weight_size_hnet = sum(p.numel() for p in HyperNet_model.parameters() if p.requires_grad)
+   print("Number of parameters for HyperNet:", weight_size_hnet)
 else:
    raise ValueError("Unknown hnet_arch")
 
-weight_size_hnet = HyperNet_model.print_num_weights()
 ## Set up pipeline
 hknet_pipeline = Pipeline_cm(strTime, "pipelines", "hknet")
 hknet_pipeline.setModel(HyperNet_model, KalmanNet_model)

@@ -21,6 +21,9 @@ class ContextPositionEmbedding(nn.Module):
         self.position_embedding = nn.Embedding(2, embedding_dim)
 
     def forward(self, position, context):
+        # Logarithmize context
+        context = torch.log10(context)
+        # Embedding
         position_emb = self.position_embedding(position)
         context_emb = self.context_embedding(context.unsqueeze(0))
 
