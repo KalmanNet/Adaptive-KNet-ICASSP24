@@ -18,19 +18,16 @@ class ContextPositionEmbedding(nn.Module):
     def __init__(self, SoW_len, embedding_dim):
         super(ContextPositionEmbedding, self).__init__()
         self.context_embedding = nn.Linear(SoW_len, embedding_dim)
-        self.position_embedding = nn.Embedding(2, embedding_dim)
 
-    def forward(self, position, context):
+    def forward(self, context):
         # Logarithmize context
         context = torch.log10(context)
         # Embedding
-        position_emb = self.position_embedding(position)
         context_emb = self.context_embedding(context.unsqueeze(0))
 
-        # Concatenate embeddings along the channel dimension
-        combined_emb = torch.cat((context_emb.unsqueeze(0), position_emb.unsqueeze(0)), dim=0).unsqueeze(0)
+        context_emb = context_emb.unsqueeze(0).unsqueeze(0)
 
-        return combined_emb # [batch_size=1, channel=2, embedding_dim]
+        return context_emb # [batch_size=1, channel=1, embedding_dim]
 
 
 class hnet_deconv(nn.Module):
@@ -45,17 +42,16 @@ class hnet_deconv(nn.Module):
         # Checking
         if SoW_len > embedding_dim:
             raise ValueError('embedding_dim must be larger than SoW_len.')
-        input_size = embedding_dim * 2 # 2 for position and context
+        input_size = embedding_dim 
         if input_size >= output_size:
             raise ValueError('input_size must be smaller than output_size')
-        self.position_embeddings = torch.tensor([0, 1]).to(torch.int) # shift/gain
         
         # Network architecture (embedding layer + deconv layers)       
         self.embedding_layer = ContextPositionEmbedding(SoW_len, embedding_dim)
 
         self.deconv_layers = []
-        num_deconv_layers_scaleup_channel = math.floor(math.log(hidden_channel_dim / 2, 2))
-        out_channel = 2 # 2 for position and context
+        num_deconv_layers_scaleup_channel = math.floor(math.log(hidden_channel_dim, 2))
+        out_channel = 1 # context
         for _ in range(num_deconv_layers_scaleup_channel):
             in_channel = out_channel
             out_channel = in_channel * 2
@@ -89,9 +85,7 @@ class hnet_deconv(nn.Module):
                                 stride=2, 
                                 padding=1)
             self.deconv_layers.append(deconv_layer)
-            # self.deconv_layers.append(nn.BatchNorm1d(out_channel))
             self.deconv_layers.append(nn.ReLU(inplace=True))
-            # self.layers.append(nn.Dropout(p=0.5))
         
         # Final deconv layer
         input_size_final = embedding_dim * 2 ** num_deconv_layers
@@ -104,14 +98,10 @@ class hnet_deconv(nn.Module):
         self.deconv = nn.Sequential(*self.deconv_layers)
 
     def forward(self, SoW):      
-        # Reuse MLPs for the corresponding input tensors
-        outputs = []
-        for pe in self.position_embeddings:
-            y = self.embedding_layer(pe, SoW)
-            y = self.deconv(y)
-            outputs.append(torch.squeeze(y))
+        y = self.embedding_layer(SoW)
+        y = self.deconv(y)
 
-        return outputs
+        return torch.squeeze(y)
 
     def count_weights(self, layer):
         return sum(p.numel() for p in layer.parameters() if p.requires_grad)

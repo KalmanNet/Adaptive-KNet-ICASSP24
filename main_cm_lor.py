@@ -57,7 +57,6 @@ args.out_mult_KNet = 5
 
 ### training parameters
 args.RobustScaler = False # if True, use Robust Scaling for the losses of different datasets
-args.WeightedMSE = False # if True, use weighted MSE loss for the losses of different datasets (assume known q^2 and r^2)
 
 args.wandb_switch = False
 if args.wandb_switch:

@@ -98,7 +98,8 @@ class Pipeline_hknet:
                 # Init Sequence
                 train_init_batch = torch.empty([self.N_B, sysmdl_m,1]).to(self.device)
                 # Init Hidden State
-                self.hnet.init_hidden()
+                if self.args.hnet_arch == "GRU":
+                    self.hnet.init_hidden()
                 self.mnet.init_hidden()  
                 # SoW: make sure SoWs are consistent
                 assert torch.allclose(cv_input_tuple[i][1], cv_target_tuple[i][1]) 
@@ -193,7 +194,8 @@ class Pipeline_hknet:
             with torch.no_grad():
                 for i in SoW_train_range: # dataset i 
                     # Init Hidden State
-                    self.hnet.init_hidden()
+                    if self.args.hnet_arch == "GRU":
+                        self.hnet.init_hidden()
                     self.mnet.init_hidden()
                     # Init Sequence                    
                     self.mnet.InitSequence(cv_init[i], sysmdl_T_test)                       
@@ -309,7 +311,8 @@ class Pipeline_hknet:
             self.mnet.eval()
             self.mnet.batch_size = self.N_T
             # Init Hidden State
-            self.hnet.init_hidden()
+            if self.args.hnet_arch == "GRU":
+                    self.hnet.init_hidden()
             self.mnet.init_hidden()
 
             torch.no_grad()
@@ -436,7 +439,8 @@ class Pipeline_hknet:
                 self.hnet.train()
                 self.mnet.batch_size = self.N_B
                 # Init Hidden State
-                self.hnet.init_hidden()
+                if self.args.hnet_arch == "GRU":
+                    self.hnet.init_hidden()
                 self.mnet.init_hidden()
 
                 # Init Training Batch tensors
@@ -526,7 +530,8 @@ class Pipeline_hknet:
                 self.mnet.eval()
                 self.mnet.batch_size = self.N_CV
                 # Init Hidden State
-                self.hnet.init_hidden()
+                if self.args.hnet_arch == "GRU":
+                    self.hnet.init_hidden()
                 self.mnet.init_hidden()
 
                 with torch.no_grad():
@@ -626,7 +631,8 @@ class Pipeline_hknet:
         self.mnet.eval()
         self.mnet.batch_size = self.N_T
         # Init Hidden State
-        self.hnet.init_hidden()
+        if self.args.hnet_arch == "GRU":
+                    self.hnet.init_hidden()
         self.mnet.init_hidden()
 
         torch.no_grad()

@@ -10,6 +10,7 @@ from simulations.lorenz_attractor.parameters import m1x_0, m2x_0, m, n,\
 f, h, h_nonlinear, Q_structure, R_structure
 
 from hnets.hnet import HyperNetwork
+from hnets.hnet_deconv_noPE import hnet_deconv
 from mnets.KNet_mnet import KalmanNetNN
 
 from pipelines.Pipeline_hknet import Pipeline_hknet
@@ -29,7 +30,7 @@ print("Current Time =", strTime)
 ###  Settings   ###
 ###################
 args = config.general_settings()
-args.use_cuda = True # use GPU or not
+args.use_cuda = False # use GPU or not
 if args.use_cuda:
    if torch.cuda.is_available():
       device = torch.device('cuda')
@@ -54,25 +55,40 @@ args.in_mult_KNet = 40
 args.out_mult_KNet = 5
 
 ### training parameters
-args.wandb_switch = True
+args.wandb_switch = False
 if args.wandb_switch:
    import wandb
    wandb.init(project="HKNet_Lor")
-args.n_steps = 2000
-args.n_batch = 100
-args.lr = 1e-6
-args.wd = 1e-9
-args.CompositionLoss = True
-args.alpha = 0.5
+
+args.hnet_arch = "deconv"
+embedding_dim = 8
+hidden_channel_dim = 128
+
+args.knet_trainable = False # Hypernet generates KNet weights
+args.use_context_mod = False # Hypernet generates all KNet weights
+args.n_steps = 5000
+args.n_batch = 32
+args.lr = 1e-4
+args.wd = 1e-3
+args.CompositionLoss = False
+if args.CompositionLoss: # if True, use CompositionLoss, set args.alpha
+   args.alpha = 0.5
 
 ### True model
 # SoW
-SoW = torch.tensor([[0,0,1,0.1], [0,0,1,0.4], [0,0,1,0.7], [0,0,1,1], [0,0,1,0.15], [0,0,1,0.55], [0,0,1,0.9]])
-SoW_train_range = [0,1,2,3] # first *** number of datasets are used for training
-SoW_test_range = [0,1,2,3,4,5,6] # last *** number of datasets are used for testing
+SoW = torch.tensor([[1,1], [1,0.1], [1,0.01], [1,0.001],
+                    [0.1,1], [0.1,0.1], [0.1,0.01], [0.1,0.001],
+                    [0.01,1], [0.01,0.1], [0.01,0.01], [0.01,0.001],
+                    [0.001,1], [0.001,0.1], [0.001,0.01], [0.001,0.001]])
+SoW_train_range = list(range(len(SoW))) # These datasets are used for training
+SoW_test_range = list(range(len(SoW))) # These datasets are used for testing
 # noise
-r2 = SoW[:, 2]
-q2 = SoW[:, 3]
+r2 = SoW[:, 0]
+q2 = SoW[:, 1]
+
+# change SoW to q2/r2 ratio
+SoW = q2/r2
+
 for i in range(len(SoW)):
    print(f"SoW of dataset {i}: ", SoW[i])
    print(f"r2 [linear] and q2 [linear] of dataset  {i}: ", r2[i], q2[i])
@@ -85,7 +101,7 @@ for i in range(len(SoW)):
 
 ### paths 
 path_results = 'simulations/lorenz_attractor/results/'
-DatafolderName = 'data/lorenz_attractor/'
+DatafolderName = 'data/lorenz_attractor/30dB/'
 # traj_resultName = ['traj_lorDT_NLobs_rq3030_T20.pt']
 dataFileName = []
 rounding_digits = 4 # round to # digits after decimal point
@@ -97,9 +113,9 @@ for i in range(len(SoW)):
 #########################################
 ###  Generate and load data DT case   ###
 #########################################
-print("Start Data Gen")
-for i in range(len(SoW)):
-   DataGen(args, sys_model[i], DatafolderName + dataFileName[i])
+# print("Start Data Gen")
+# for i in range(len(SoW)):
+#    DataGen(args, sys_model[i], DatafolderName + dataFileName[i])
 print("Data Load")
 train_input_list = []
 train_target_list = []
@@ -127,13 +143,13 @@ for i in range(len(SoW)):
 ### Evaluate Filters ###
 ########################
 # ### Evaluate EKF full
-print("Evaluate EKF full")
-for i in range(len(SoW)):
-   test_input = test_input_list[i][0]
-   test_target = test_target_list[i][0]
-   test_init = test_init_list[i][0]
-   print(f"Dataset {i}")
-   [MSE_EKF_linear_arr, MSE_EKF_linear_avg, MSE_EKF_dB_avg, EKF_KG_array, EKF_out] = EKFTest(args, sys_model[i], test_input, test_target)
+# print("Evaluate EKF full")
+# for i in range(len(SoW)):
+#    test_input = test_input_list[i][0]
+#    test_target = test_target_list[i][0]
+#    test_init = test_init_list[i][0]
+#    print(f"Dataset {i}")
+#    [MSE_EKF_linear_arr, MSE_EKF_linear_avg, MSE_EKF_dB_avg, EKF_KG_array, EKF_out] = EKFTest(args, sys_model[i], test_input, test_target)
 
 # ### Save trajectories
 # trajfolderName = 'Filters' + '/'
@@ -152,14 +168,15 @@ for i in range(len(SoW)):
 ### Hyper - KalmanNet ###
 #########################
 ## Build Neural Networks
-print("Build HNet and KNet")
+print("Build KNet")
 KalmanNet_model = KalmanNetNN()
 weight_size = KalmanNet_model.NNBuild(sys_model[0], args)
 print("Number of parameters for KalmanNet:", weight_size)
-HyperNet_model = HyperNetwork(args, weight_size)
-weight_size_hnet = sum(p.numel() for p in HyperNet_model.parameters() if p.requires_grad)
-print("Number of parameters for HyperNet:", weight_size_hnet)
-print("Total number of parameters:", weight_size + weight_size_hnet)
+
+print("Build HNet")
+HyperNet_model = hnet_deconv(args, 1, weight_size, embedding_dim=embedding_dim, hidden_channel_dim = hidden_channel_dim)
+weight_size_hnet = HyperNet_model.print_num_weights()
+
 ## Set up pipeline
 hknet_pipeline = Pipeline_hknet(strTime, "pipelines", "hknet")
 hknet_pipeline.setModel(HyperNet_model, KalmanNet_model)

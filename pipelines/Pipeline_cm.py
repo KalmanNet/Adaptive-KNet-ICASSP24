@@ -13,31 +13,9 @@ import random
 import time
 import math
 
-class WeightedMSELoss(nn.Module):
-    def __init__(self):
-        super(WeightedMSELoss, self).__init__()
-
-    def forward(self, predictions, targets, Q, R):
-        # Compute the residuals (errors)
-        residuals = predictions - targets
-
-        # Calculate the trace of Q and R matrices
-        Q_trace = torch.trace(Q)
-        R_trace = torch.trace(R)
-        noise_floor = torch.min(Q_trace, R_trace)
-
-        # Calculate the weights based on the inverse of the traces
-        noise_weight = 1 / noise_floor
-
-        # Compute the weighted MSE loss using the calculated weights
-        weighted_residuals = noise_weight * (residuals ** 2)
-        weighted_mse_loss = torch.mean(weighted_residuals)
-
-        return weighted_mse_loss
-
-class HuberIQRScalingLoss(nn.Module):
+class IQRScalingLoss(nn.Module):
     def __init__(self, delta=1.0, quantile_range=(25, 75)):
-        super(HuberIQRScalingLoss, self).__init__()
+        super(IQRScalingLoss, self).__init__()
         self.delta = delta
         self.lower_quantile, self.upper_quantile = quantile_range
 
@@ -53,51 +31,8 @@ class HuberIQRScalingLoss(nn.Module):
             scaled_residuals = residuals / IQR
         else:
             scaled_residuals = residuals
-
-        # Compute the Huber loss using the scaled residuals
-        abs_scaled_residuals = torch.abs(scaled_residuals)
-        mse_loss = 0.5 * (scaled_residuals ** 2)
-        mae_loss = self.delta * (abs_scaled_residuals - 0.5 * self.delta)
-        huber_loss = torch.where(abs_scaled_residuals <= self.delta, mse_loss, mae_loss)
         
-        return torch.mean(huber_loss)
-
-class WeightedHuberIQRScalingLoss(nn.Module):
-    def __init__(self, delta=1.0, quantile_range=(25, 75)):
-        super(WeightedHuberIQRScalingLoss, self).__init__()
-        self.delta = delta
-        self.lower_quantile, self.upper_quantile = quantile_range
-    
-    def forward(self, predictions, targets, Q, R):
-        # Compute the residuals (errors)
-        residuals = predictions - targets
-
-        # Calculate the IQR for scaling
-        if predictions.numel() >= 4:
-            Q1 = torch.quantile(residuals, self.lower_quantile / 100.0)
-            Q3 = torch.quantile(residuals, self.upper_quantile / 100.0)
-            IQR = Q3 - Q1
-            scaled_residuals = residuals / IQR
-        else:
-            scaled_residuals = residuals
-
-        # Calculate the trace of Q and R matrices
-        Q_trace = torch.trace(Q)
-        R_trace = torch.trace(R)
-        noise_floor = torch.min(Q_trace, R_trace)
-
-        # Calculate the weights based on the inverse of the traces
-        noise_weight = 1 / noise_floor
-
-        weighted_scaled_residuals = noise_weight * scaled_residuals
-
-        # Compute the Huber loss using the scaled residuals
-        abs_residuals = torch.abs(weighted_scaled_residuals)
-        mse_loss = 0.5 * (weighted_scaled_residuals ** 2)
-        mae_loss = self.delta * (abs_residuals - 0.5 * self.delta)
-        huber_loss = torch.where(abs_residuals <= self.delta, mse_loss, mae_loss)
-        
-        return torch.mean(huber_loss)
+        return torch.mean(scaled_residuals)
 
 class Pipeline_cm:
 
@@ -134,12 +69,7 @@ class Pipeline_cm:
         self.loss_fn = nn.MSELoss(reduction='mean') # Loss Function for single dataset and CV
         # Loss Function for multiple datasets
         if args.RobustScaler == True:
-            if args.WeightedMSE == True:
-                self.loss_fn_train = WeightedHuberIQRScalingLoss(delta=1.0, quantile_range=(25, 75))
-            else:
-                self.loss_fn_train = HuberIQRScalingLoss(delta=1.0, quantile_range=(25, 75))
-        elif args.WeightedMSE == True:
-            self.loss_fn_train = WeightedMSELoss()
+            self.loss_fn_train = IQRScalingLoss(delta=1.0, quantile_range=(25, 75))
         else:
             self.loss_fn_train = nn.MSELoss(reduction='mean')
 
@@ -241,15 +171,9 @@ class Pipeline_cm:
 
                 # Compute Training Loss
                 if(MaskOnState):
-                    if self.args.WeightedMSE: 
-                        MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(x_out_training_batch[:,mask,:], train_target_batch[:,mask,:], sys_model[i].Q, sys_model[i].R)
-                    else:
-                        MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(x_out_training_batch[:,mask,:], train_target_batch[:,mask,:])
-                else: # no mask on state  
-                    if self.args.WeightedMSE: 
-                        MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(x_out_training_batch, train_target_batch, sys_model[i].Q, sys_model[i].R)
-                    else:            
-                        MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(x_out_training_batch, train_target_batch)
+                    MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(x_out_training_batch[:,mask,:], train_target_batch[:,mask,:])
+                else: # no mask on state               
+                    MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(x_out_training_batch, train_target_batch)
                         
 
             # averaged Loss over all datasets           
