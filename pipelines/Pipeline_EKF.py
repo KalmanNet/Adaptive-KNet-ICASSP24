@@ -130,12 +130,7 @@ class Pipeline_EKF:
         self.loss_fn = nn.MSELoss(reduction='mean') # Loss Function for single dataset and CV
         # Loss Function for multiple datasets
         if args.RobustScaler == True:
-            if args.WeightedMSE == True:
-                self.loss_fn_train = WeightedHuberIQRScalingLoss(delta=1.0, quantile_range=(25, 75))
-            else:
-                self.loss_fn_train = HuberIQRScalingLoss(delta=1.0, quantile_range=(25, 75))
-        elif args.WeightedMSE == True:
-            self.loss_fn_train = WeightedMSELoss()
+            self.loss_fn_train = HuberIQRScalingLoss(delta=1.0, quantile_range=(25, 75))
         else:
             self.loss_fn_train = nn.MSELoss(reduction='mean')
 
@@ -550,7 +545,10 @@ class Pipeline_EKF:
                 
                 # Forward Computation
                 for t in range(0, sysmdl_T):
-                    x_out_training_batch[:, :, t] = torch.squeeze(self.model(torch.unsqueeze(y_training_batch[:, :, t],2)))
+                    if self.args.use_context_mod:
+                        x_out_training_batch[:, :, t] = torch.squeeze(self.model(torch.unsqueeze(y_training_batch[:, :, t],2), train_input_tuple[i][1]))
+                    else:
+                        x_out_training_batch[:, :, t] = torch.squeeze(self.model(torch.unsqueeze(y_training_batch[:, :, t],2)))
                 
                 # Compute Training Loss
                 if (self.args.CompositionLoss):
@@ -559,26 +557,16 @@ class Pipeline_EKF:
                         y_hat[:,:,t] = torch.squeeze(SysModel[i].h(torch.unsqueeze(x_out_training_batch[:,:,t],2)))
 
                     if(MaskOnState):### FIXME: composition loss, y_hat may have different mask with x
-                        if self.args.WeightedMSE: 
-                            MSE_trainbatch_linear_LOSS[i] = self.alpha * self.loss_fn_train(x_out_training_batch[:,mask,:], train_target_batch[:,mask,:], SysModel[i].Q, SysModel[i].R)+(1-self.alpha)*self.loss_fn_train(y_hat[:,mask,:], y_training_batch[:,mask,:], SysModel[i].Q, SysModel[i].R)
-                        else:
-                            MSE_trainbatch_linear_LOSS[i] = self.alpha * self.loss_fn_train(x_out_training_batch[:,mask,:], train_target_batch[:,mask,:])+(1-self.alpha)*self.loss_fn_train(y_hat[:,mask,:], y_training_batch[:,mask,:])
+                        
+                        MSE_trainbatch_linear_LOSS[i] = self.alpha * self.loss_fn_train(x_out_training_batch[:,mask,:], train_target_batch[:,mask,:])+(1-self.alpha)*self.loss_fn_train(y_hat[:,mask,:], y_training_batch[:,mask,:])
                     else:# no mask on state
-                        if self.args.WeightedMSE:           
-                            MSE_trainbatch_linear_LOSS[i] = self.alpha * self.loss_fn_train(x_out_training_batch, train_target_batch, SysModel[i].Q, SysModel[i].R)+(1-self.alpha)*self.loss_fn_train(y_hat, y_training_batch, SysModel[i].Q, SysModel[i].R)
-                        else:
-                            MSE_trainbatch_linear_LOSS[i] = self.alpha * self.loss_fn_train(x_out_training_batch, train_target_batch)+(1-self.alpha)*self.loss_fn_train(y_hat, y_training_batch)
+                        
+                        MSE_trainbatch_linear_LOSS[i] = self.alpha * self.loss_fn_train(x_out_training_batch, train_target_batch)+(1-self.alpha)*self.loss_fn_train(y_hat, y_training_batch)
                 else:# no composition loss
-                    if(MaskOnState):
-                        if self.args.WeightedMSE:
-                            MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(x_out_training_batch[:,mask,:], train_target_batch[:,mask,:], SysModel[i].Q, SysModel[i].R)
-                        else:
-                            MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(x_out_training_batch[:,mask,:], train_target_batch[:,mask,:])
-                    else: # no mask on state
-                        if self.args.WeightedMSE:
-                            MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(x_out_training_batch, train_target_batch, SysModel[i].Q, SysModel[i].R)
-                        else:
-                            MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(x_out_training_batch, train_target_batch)
+                    if(MaskOnState):    
+                        MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(x_out_training_batch[:,mask,:], train_target_batch[:,mask,:])
+                    else: # no mask on state                   
+                        MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(x_out_training_batch, train_target_batch)
 
             # averaged Loss over all datasets           
             MSE_trainbatch_linear_LOSS_average = MSE_trainbatch_linear_LOSS.sum() / len(SoW_train_range)                         
@@ -618,7 +606,10 @@ class Pipeline_EKF:
                     self.model.InitSequence(cv_init[i], sysmdl_T_test)                       
                     
                     for t in range(0, sysmdl_T_test):
-                        x_out_cv_batch[:, :, t] = torch.squeeze(self.model(torch.unsqueeze(cv_input_tuple[i][0][:, :, t],2)))
+                        if self.args.use_context_mod:
+                            x_out_cv_batch[:, :, t] = torch.squeeze(self.model(torch.unsqueeze(cv_input_tuple[i][0][:, :, t],2), cv_input_tuple[i][1]))
+                        else:
+                            x_out_cv_batch[:, :, t] = torch.squeeze(self.model(torch.unsqueeze(cv_input_tuple[i][0][:, :, t],2)))
                     
                     # Compute CV Loss
                     if(MaskOnState):
@@ -673,6 +664,131 @@ class Pipeline_EKF:
             ###
         return [self.MSE_cv_linear_epoch, self.MSE_cv_dB_epoch, self.MSE_train_linear_epoch, self.MSE_train_dB_epoch]
 
+    def NNTest_alldatasets(self, SoW_test_range, sys_model, test_input_tuple, test_target_tuple, path_results,test_init,\
+        MaskOnState=False,load_model=False,load_model_path=None, test_lengthMask=None):
+        if self.args.wandb_switch: 
+            import wandb
+        # Load model weights
+        if load_model:
+            model_weights = torch.load(load_model_path, map_location=self.device) 
+        else:
+            model_weights = torch.load(path_results+'knet_best-model.pt', map_location=self.device) 
+        # Set the loaded weights to the model
+        # FIXME: if not NNTrain before, the model is not defined
+        self.model.load_state_dict(model_weights)
+
+        # dataset size    
+        for i in SoW_test_range[:-1]:# except the last one
+            assert(test_target_tuple[i][0].shape[1]==test_target_tuple[i+1][0].shape[1])
+            assert(test_target_tuple[i][0].shape[2]==test_target_tuple[i+1][0].shape[2])
+            # check all datasets have the same m, T   
+        sysmdl_m = test_target_tuple[0][0].shape[1]
+        sysmdl_T_test = test_target_tuple[0][0].shape[2]
+        total_size = 0 # total size for all datasets
+        for i in SoW_test_range: 
+            total_size += test_input_tuple[i][0].shape[0] 
+        self.MSE_test_linear_arr = torch.zeros([total_size])
+        x_out_test = torch.zeros([total_size, sysmdl_m,sysmdl_T_test]).to(self.device)
+        current_idx = 0
+
+        for i in SoW_test_range: # dataset i   
+            # SoW
+            assert torch.allclose(test_input_tuple[i][1], test_target_tuple[i][1]) 
+            SoW_test = test_input_tuple[i][1]
+            self.model.UpdateSystemDynamics(sys_model[i])
+            # load data
+            test_input = test_input_tuple[i][0]
+            test_target = test_target_tuple[i][0]
+            # data size
+            self.N_T = test_input.shape[0]
+            
+            if MaskOnState:
+                mask = torch.tensor([True,False,False])
+                if sysmdl_m == 2: 
+                    mask = torch.tensor([True,False])
+
+            # MSE LOSS Function
+            loss_fn = nn.MSELoss(reduction='mean')
+
+            # Test mode
+            self.model.eval()
+            self.model.batch_size = self.N_T
+            # Init Hidden State
+            self.model.init_hidden()
+
+            torch.no_grad()
+
+            start = time.time()
+
+            # Init Sequence
+            self.model.InitSequence(test_init[i], sysmdl_T_test)               
+
+            for t in range(0, sysmdl_T_test):
+                if self.args.use_context_mod:
+                    x_out_test[current_idx:current_idx+self.N_T,:, t] = torch.squeeze(self.model(torch.unsqueeze(test_input[:,:, t],2), SoW_test))
+                else:
+                    x_out_test[current_idx:current_idx+self.N_T,:, t] = torch.squeeze(self.model(torch.unsqueeze(test_input[:,:, t],2)))
+            
+            end = time.time()
+            t = end - start
+
+            # MSE loss
+            for j in range(self.N_T):# cannot use batch due to different length and std computation  
+                if(MaskOnState):
+                    if self.args.randomLength:
+                        self.MSE_test_linear_arr[current_idx+j] = loss_fn(x_out_test[current_idx+j,mask,test_lengthMask[j]], test_target[j,mask,test_lengthMask[j]]).item()
+                    else:
+                        self.MSE_test_linear_arr[current_idx+j] = loss_fn(x_out_test[current_idx+j,mask,:], test_target[j,mask,:]).item()
+                else:
+                    if self.args.randomLength:
+                        self.MSE_test_linear_arr[current_idx+j] = loss_fn(x_out_test[current_idx+j,:,test_lengthMask[j]], test_target[j,:,test_lengthMask[j]]).item()
+                    else:
+                        self.MSE_test_linear_arr[current_idx+j] = loss_fn(x_out_test[current_idx+j,:,:], test_target[j,:,:]).item()
+            
+            # Average for dataset i
+            MSE_test_linear_avg_dataset_i = torch.mean(self.MSE_test_linear_arr[current_idx:current_idx+self.N_T])
+            MSE_test_dB_avg_dataset_i = 10 * torch.log10(MSE_test_linear_avg_dataset_i)
+
+            # Standard deviation for dataset i
+            MSE_test_linear_std_dataset_i = torch.std(self.MSE_test_linear_arr[current_idx:current_idx+self.N_T], unbiased=True)
+
+            # Confidence interval for dataset i
+            test_std_dB_dataset_i = 10 * torch.log10(MSE_test_linear_std_dataset_i + MSE_test_linear_avg_dataset_i) - MSE_test_dB_avg_dataset_i
+
+            # Print MSE and std for dataset i
+            str = self.modelName + "-" + f"dataset {i}" + "-" + "MSE Test:"
+            print(str, MSE_test_dB_avg_dataset_i, "[dB]")
+            str = self.modelName + "-"  + f"dataset {i}" + "-" + "STD Test:"
+            print(str, test_std_dB_dataset_i, "[dB]")
+            # Print Run Time
+            print("Inference Time:", t)
+
+            ### Optinal: record loss on wandb
+            if self.args.wandb_switch:
+                wandb.log({f'test_loss for dataset {i}':MSE_test_dB_avg_dataset_i})
+            ###
+
+            # update index
+            current_idx += self.N_T
+        
+        # average MSE over all datasets
+        self.MSE_test_linear_avg = torch.mean(self.MSE_test_linear_arr)
+        self.MSE_test_dB_avg = 10 * torch.log10(self.MSE_test_linear_avg)
+        # Average std
+        self.MSE_test_linear_std = torch.std(self.MSE_test_linear_arr, unbiased=True)
+        self.test_std_dB = 10 * torch.log10(self.MSE_test_linear_std + self.MSE_test_linear_avg) - self.MSE_test_dB_avg
+        # Print MSE and std
+        str = self.modelName + "-" + "Average" + "-" + "MSE Test:"
+        print(str, self.MSE_test_dB_avg, "[dB]")
+        str = self.modelName + "-"  + "Average" + "-" + "STD Test:"
+        print(str, self.test_std_dB, "[dB]")
+
+        ### Optinal: record loss on wandb
+        if self.args.wandb_switch:
+            wandb.log({f'averaged test loss':self.MSE_test_dB_avg})
+        ###
+
+        return [self.MSE_test_linear_arr, self.MSE_test_linear_avg, self.MSE_test_dB_avg, x_out_test]
 
     def PlotTrain_KF(self, MSE_KF_linear_arr, MSE_KF_dB_avg):
 
