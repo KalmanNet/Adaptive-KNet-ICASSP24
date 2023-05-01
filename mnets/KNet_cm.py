@@ -50,14 +50,6 @@ class KalmanNetNN(torch.nn.Module):
         self.prior_Sigma = prior_Sigma.to(self.device)
         self.prior_S = prior_S.to(self.device)
 
-        self.out_Q = self.prior_Q.flatten().reshape(1,1, -1).repeat(self.seq_len_input,self.batch_size, 1)
-        self.out_Sigma = self.prior_Sigma.flatten().reshape(1,1, -1).repeat(self.seq_len_input,self.batch_size, 1)
-        self.out_S = self.prior_S.flatten().reshape(1,1, -1).repeat(self.seq_len_input,self.batch_size, 1)
-        if self.use_context_mod:
-            self.out_noiseCM_Q = torch.zeros(self.seq_len_input, self.batch_size, self.m**2, device=self.device)
-            self.out_noiseCM_Sigma = torch.zeros(self.seq_len_input, self.batch_size, self.m**2, device=self.device)
-            self.out_noiseCM_S = torch.zeros(self.seq_len_input, self.batch_size, self.n**2, device=self.device)
-
         ### Define network dimensions ###
         # lstm to track Q
         d_input_Q = self.m * args.in_mult_KNet
@@ -90,6 +82,16 @@ class KalmanNetNN(torch.nn.Module):
         # Fully connected 7
         d_input_FC7 = 2 * self.n
         d_output_FC7 = 2 * self.n * args.in_mult_KNet
+
+        self.out_Q = self.prior_Q.flatten().reshape(1,1, -1).repeat(self.seq_len_input,self.batch_size, 1)
+        self.out_Sigma = self.prior_Sigma.flatten().reshape(1,1, -1).repeat(self.seq_len_input,self.batch_size, 1)
+        self.out_S = self.prior_S.flatten().reshape(1,1, -1).repeat(self.seq_len_input,self.batch_size, 1)
+        if self.use_context_mod:
+            d_hidden_out = self.m*self.n
+            self.out_noiseCM_Q = torch.zeros(self.seq_len_input, self.batch_size, d_hidden_Q, device=self.device)
+            self.out_noiseCM_Sigma = torch.zeros(self.seq_len_input, self.batch_size, d_hidden_Sigma, device=self.device)
+            self.out_noiseCM_S = torch.zeros(self.seq_len_input, self.batch_size, d_hidden_S, device=self.device)
+            self.out_noiseCM_out = torch.zeros(self.seq_len_input, self.batch_size, d_hidden_out, device=self.device)
 
         # Define original KNet fc and lstm layer shapes for later internal layer construction
         self.fc_shape = {
@@ -129,6 +131,7 @@ class KalmanNetNN(torch.nn.Module):
             d_input_noiseCM_q = 1
             d_input_noiseCM_sigma = 1
             d_input_noiseCM_s = 1
+            d_input_noiseCM_out = 1
             self.cm_shape = {
                 'lstm_noiseCM_q_w_ih': [d_hidden_Q * 4, d_input_noiseCM_q],
                 'lstm_noiseCM_q_b_ih': [d_hidden_Q * 4],
@@ -141,10 +144,18 @@ class KalmanNetNN(torch.nn.Module):
                 'lstm_noiseCM_s_w_ih': [d_hidden_S * 4, d_input_noiseCM_s],
                 'lstm_noiseCM_s_b_ih': [d_hidden_S * 4],
                 'lstm_noiseCM_s_w_hh': [d_hidden_S * 4, d_hidden_S],
-                'lstm_noiseCM_s_b_hh': [d_hidden_S * 4]}
+                'lstm_noiseCM_s_b_hh': [d_hidden_S * 4],
+
+                'lstm_noiseCM_out_w_ih': [d_hidden_out * 4, d_input_noiseCM_out],
+                'lstm_noiseCM_out_b_ih': [d_hidden_out * 4],
+                'lstm_noiseCM_out_w_hh': [d_hidden_out * 4, d_hidden_out],
+                'lstm_noiseCM_out_b_hh': [d_hidden_out * 4],
+                'fc_noiseCM_out_w': [d_output_FC2, d_hidden_out],
+                'fc_noiseCM_out_b': [d_output_FC2]}
             
             n_params_cm = d_hidden_Q*(d_input_noiseCM_q +1)*4+d_hidden_Sigma*(d_input_noiseCM_sigma +1)*4+d_hidden_S*(d_input_noiseCM_s +1)*4 +\
-                        d_hidden_Q * 4 * (d_hidden_Q +1) + d_hidden_Sigma * 4 * (d_hidden_Sigma +1) + d_hidden_S * 4 * (d_hidden_S +1)
+                        d_hidden_Q * 4 * (d_hidden_Q +1) + d_hidden_Sigma * 4 * (d_hidden_Sigma +1) + d_hidden_S * 4 * (d_hidden_S +1) +\
+                        d_hidden_out*4*(d_input_noiseCM_out+d_hidden_out+2) + d_output_FC2*(d_hidden_out+1)
         
         ### Calculate number of parameters in KNet ###
         n_params_fc = d_output_FC1*(d_input_FC1 +1)+d_hidden_FC2*(d_input_FC2 +1)+d_output_FC2*(d_hidden_FC2 +1)+d_output_FC3*(d_input_FC3 +1)+d_output_FC4*(d_input_FC4 +1)+d_output_FC5*(d_input_FC5 +1)+d_output_FC6*(d_input_FC6 +1)+d_output_FC7*(d_input_FC7 +1)
@@ -217,6 +228,19 @@ class KalmanNetNN(torch.nn.Module):
             self._weights.append(self.lstm_noiseCM_s_w_hh)
             self.register_parameter('lstm_noiseCM_s_b_hh', nn.Parameter(torch.Tensor(d_hidden_S * 4)))
             self._weights.append(self.lstm_noiseCM_s_b_hh)
+
+            self.register_parameter('lstm_noiseCM_out_w_ih', nn.Parameter(torch.Tensor(d_hidden_out * 4, d_input_noiseCM_out)))
+            self._weights.append(self.lstm_noiseCM_out_w_ih)
+            self.register_parameter('lstm_noiseCM_out_b_ih', nn.Parameter(torch.Tensor(d_hidden_out * 4)))
+            self._weights.append(self.lstm_noiseCM_out_b_ih)
+            self.register_parameter('lstm_noiseCM_out_w_hh', nn.Parameter(torch.Tensor(d_hidden_out * 4, d_hidden_out)))
+            self._weights.append(self.lstm_noiseCM_out_w_hh)
+            self.register_parameter('lstm_noiseCM_out_b_hh', nn.Parameter(torch.Tensor(d_hidden_out * 4)))
+            self._weights.append(self.lstm_noiseCM_out_b_hh)
+            self.register_parameter('fc_noiseCM_out_w', nn.Parameter(torch.Tensor(d_output_FC2, d_hidden_out)))
+            self._weights.append(self.fc_noiseCM_out_w)
+            self.register_parameter('fc_noiseCM_out_b', nn.Parameter(torch.Tensor(d_output_FC2)))
+            self._weights.append(self.fc_noiseCM_out_b)
 
         else: 
             # Fully connected 1-7
@@ -442,7 +466,8 @@ class KalmanNetNN(torch.nn.Module):
         obs_innov_diff = expand_dim(obs_innov_diff)
         fw_evol_diff = expand_dim(fw_evol_diff)
         fw_update_diff = expand_dim(fw_update_diff)
-        SoW = expand_dim(SoW)
+        if SoW is not None:
+            SoW = expand_dim(SoW)
         
         ####################
         ### Forward Flow ###
@@ -509,11 +534,26 @@ class KalmanNetNN(torch.nn.Module):
                 self.lstm_s_b_ih,
                 self.lstm_s_w_hh,
                 self.lstm_s_b_hh])
+            
+            # CM out-lstm
+            in_noiseCM_out = SoW
+            self.out_noiseCM_out, self.h_noiseCM_out = self.lstm_rnn_step(in_noiseCM_out, (self.out_noiseCM_out, self.h_noiseCM_out),
+            [self.lstm_noiseCM_out_w_ih,
+                self.lstm_noiseCM_out_b_ih,
+                self.lstm_noiseCM_out_w_hh,
+                self.lstm_noiseCM_out_b_hh])
+            
+            # CM FC 2
+            in_noiseCM_FC2 = self.out_noiseCM_out
+            out_noiseCM_FC2 = F.linear(in_noiseCM_FC2, self.fc_noiseCM_out_w, bias=self.fc_noiseCM_out_b)
 
             # FC 2
             in_FC2 = torch.cat((self.out_Sigma, self.out_S), 2)
             out_FC2 = self.activation_func(F.linear(in_FC2, self.fc2_w1, bias=self.fc2_b1))
             out_FC2 = F.linear(out_FC2, self.fc2_w2, bias=self.fc2_b2)
+
+            # updating output
+            out_FC2 = out_FC2 + out_noiseCM_FC2
 
             #####################
             ### Backward Flow ###
@@ -630,10 +670,12 @@ class KalmanNetNN(torch.nn.Module):
             self.out_noiseCM_Q = torch.zeros(self.seq_len_input, self.batch_size, self.m**2, device=self.device)
             self.out_noiseCM_Sigma = torch.zeros(self.seq_len_input, self.batch_size, self.m**2, device=self.device)
             self.out_noiseCM_S = torch.zeros(self.seq_len_input, self.batch_size, self.n**2, device=self.device)
+            self.out_noiseCM_out = torch.zeros(self.seq_len_input, self.batch_size, self.m*self.n, device=self.device)
 
             self.h_noiseCM_Q = torch.zeros(self.seq_len_input,self.batch_size,self.m ** 2).to(self.device)
             self.h_noiseCM_Sigma = torch.zeros(self.seq_len_input,self.batch_size,self.m ** 2).to(self.device)
             self.h_noiseCM_S = torch.zeros(self.seq_len_input,self.batch_size,self.n ** 2).to(self.device)
+            self.h_noiseCM_out = torch.zeros(self.seq_len_input,self.batch_size,self.m*self.n).to(self.device)
 
     
     ########################

@@ -456,8 +456,8 @@ class Pipeline_EKF:
         cv_init, train_init, MaskOnState=False, train_lengthMask=None,cv_lengthMask=None):
 
         ### Optional: start training from previous checkpoint
-        model_weights = torch.load(path_results+'knet_best-model.pt', map_location=self.device) 
-        self.model.load_state_dict(model_weights)
+        # model_weights = torch.load(path_results+'knet_best-model.pt', map_location=self.device) 
+        # self.model.load_state_dict(model_weights)
 
         if self.args.wandb_switch: 
             import wandb
