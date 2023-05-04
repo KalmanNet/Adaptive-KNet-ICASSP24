@@ -11,6 +11,7 @@ from simulations.linear_canonical.parameters import F, H, Q_structure_nonid, R_s
 from filters.KalmanFilter_test import KFTest
 
 from hnets.hnet import HyperNetwork
+from hnets.hnet_deconv import hnet_deconv
 from mnets.KNet_mnet import KalmanNetNN as KNet_mnet
 
 from pipelines.Pipeline_cm import Pipeline_cm
@@ -32,7 +33,7 @@ print("Current Time =", strTime)
 ### Parameter Setting ###
 #########################
 args = config.general_settings()
-args.use_cuda = True # use GPU or not
+args.use_cuda = False # use GPU or not
 if args.use_cuda:
    if torch.cuda.is_available():
       device = torch.device('cuda')
@@ -63,36 +64,45 @@ train_lengthMask = None
 cv_lengthMask = None
 test_lengthMask = None
 # determine noise distribution normal/exp (DEFAULT: "normal")
-args.meas_noise_distri = "exponential"
+args.meas_noise_distri = "normal"
 
 ### training parameters ##################################################
-args.wandb_switch = True
+args.wandb_switch = False
 if args.wandb_switch:
    import wandb
    wandb.init(project="HKNet_Linear")
 args.knet_trainable = True
 # training parameters for KNet
+args.in_mult_KNet = 1
+args.out_mult_KNet = 1
 args.n_steps = 5000
 args.n_batch = 100 
 args.lr = 1e-4
 args.wd = 1e-3
 # training parameters for Hypernet
-# n_steps = 1000
-# n_batch = 100 # will be multiplied by num of datasets
-# lr = 1e-3
-# wd = 1e-4
+args.hnet_arch = "GRU" # "deconv" or "GRU
+if args.hnet_arch == "GRU": # settings for GRU hnet
+   args.hnet_hidden_size_discount = 100
+elif args.hnet_arch == "deconv": # settings for deconv hnet
+   # 2x2 system
+   embedding_dim = 4
+   hidden_channel_dim = 32
+else:
+   raise Exception("args.hnet_arch not recognized")
+n_steps = 10000
+n_batch = 100 # will be multiplied by num of datasets
+lr = 1e-3
+wd = 1e-3
 
 ### True model ##################################################
 # SoW (state of world) = [distribution of R, distribution of Q, r2, q2]
-SoW = torch.tensor([[0,0,10,10], [0,0,10,-10], [0,0,10,-30],
-                    [0,0,-10,10], [0,0,-10,-10], [0,0,-10,-30],
-                    [0,0,-30,10], [0,0,-30,-10], [0,0,-30,-30]])
+SoW = torch.tensor([[10,-10], [1,-10], [-10,-10],[-20,-10]])
 SoW_train_range = list(range(len(SoW))) # first *** number of datasets are used for training
 print("SoW_train_range: ", SoW_train_range)
 SoW_test_range = list(range(len(SoW))) # last *** number of datasets are used for testing
 # noise
-r2_dB = SoW[:, 2]
-q2_dB = SoW[:, 3]
+r2_dB = SoW[:, 0]
+q2_dB = SoW[:, 1]
 
 r2 = 10 ** (r2_dB/10)
 q2 = 10 ** (q2_dB/10)
@@ -108,8 +118,8 @@ for i in range(len(SoW)):
    sys_model.append(sys_model_i)
 
 ### paths ##################################################
-path_results = 'simulations/linear_canonical/results/'
-dataFolderName = 'data/linear_canonical/meas_exp' + '/'
+path_results = 'simulations/linear_canonical/results/5x5/'
+dataFolderName = 'data/linear_canonical/5x5/non-diag' + '/'
 dataFileName = []
 for i in range(len(SoW)):
    dataFileName.append('r2=' + str(r2_dB[i].item())+"dB"+"_" +"q2="+ str(q2_dB[i].item())+"dB" + '.pt')
@@ -145,14 +155,14 @@ for i in range(len(SoW)):
 ##############################
 ### Evaluate Kalman Filter ###
 ##############################
-# print("Evaluate Kalman Filter True")
-# for i in range(len(SoW)):
-#    test_input = test_input_list[i][0]
-#    test_target = test_target_list[i][0]
-#    test_init = test_init_list[i][0]  
-#    test_lengthMask = None 
-#    print(f"Dataset {i}") 
-#    [MSE_KF_linear_arr, MSE_KF_linear_avg, MSE_KF_dB_avg, KF_out] = KFTest(args, sys_model[i], test_input, test_target, test_lengthMask=test_lengthMask)
+print("Evaluate Kalman Filter True")
+for i in range(len(SoW)):
+   test_input = test_input_list[i][0]
+   test_target = test_target_list[i][0]
+   test_init = test_init_list[i][0]  
+   test_lengthMask = None 
+   print(f"Dataset {i}") 
+   [MSE_KF_linear_arr, MSE_KF_linear_avg, MSE_KF_dB_avg, KF_out] = KFTest(args, sys_model[i], test_input, test_target, test_lengthMask=test_lengthMask)
 
 
 ##################################
@@ -179,38 +189,51 @@ for i in range(len(SoW)):
    KalmanNet_Pipeline.NNTest(sys_model[i], test_input_list[i][0], test_target_list[i][0], path_results)
 
 ### frozen KNet weights, train hypernet to generate CM weights on multiple datasets
-# args.knet_trainable = False # frozen KNet weights
-# args.use_context_mod = True # use CM
-# ## training parameters for Hypernet
-# args.n_steps = n_steps
-# args.n_batch = n_batch # will be multiplied by num of datasets
-# args.lr = lr
-# args.wd = wd
-# ## Build Neural Networks
-# print("Build HNet and KNet")
-# KalmanNet_model = KNet_mnet()
-# cm_weight_size = KalmanNet_model.NNBuild(sys_model[0], args, frozen_weights=frozen_weights)
-# print("Number of CM parameters:", cm_weight_size)
-# HyperNet_model = HyperNetwork(args, cm_weight_size)
-# weight_size_hnet = sum(p.numel() for p in HyperNet_model.parameters() if p.requires_grad)
-# print("Number of parameters for HyperNet:", weight_size_hnet)
-# print("Total number of parameters:", cm_weight_size + weight_size_hnet)
-# ## Set up pipeline
-# hknet_pipeline = Pipeline_cm(strTime, "pipelines", "hknet")
-# hknet_pipeline.setModel(HyperNet_model, KalmanNet_model)
-# hknet_pipeline.setTrainingParams(args)
-# ## Optinal: record parameters to wandb
-# if args.wandb_switch:
-#    wandb.log({
-#    "total_params": cm_weight_size + weight_size_hnet,
-#    "batch_size": args.n_batch,
-#    "learning_rate": args.lr,  
-#    "weight_decay": args.wd})
-# ## Train Neural Networks
-# hknet_pipeline.NNTrain_mixdatasets(SoW_train_range, sys_model, cv_input_list, cv_target_list, train_input_list, train_target_list, path_results,cv_init_list,train_init_list)
+# load frozen weights
+frozen_weights = torch.load(path_results + 'knet_best-model.pt', map_location=device) 
+### frozen KNet weights, train hypernet to generate CM weights on multiple datasets
+args.knet_trainable = False # frozen KNet weights
+args.use_context_mod = True # use CM
+## training parameters for Hypernet
+args.n_steps = n_steps
+args.n_batch = n_batch # will be multiplied by num of datasets
+args.lr = lr
+args.wd = wd
+## Build Neural Networks
+print("Build HNet and KNet")
+KalmanNet_model = KNet_mnet()
+cm_weight_size = KalmanNet_model.NNBuild(sys_model[0], args, frozen_weights=frozen_weights)
+print("Number of CM parameters:", cm_weight_size)
 
-# ## Test Neural Networks for each dataset  
-# hknet_pipeline.NNTest_alldatasets(SoW_test_range, sys_model, test_input_list, test_target_list, path_results,test_init_list)
+# Split into gain and shift
+cm_weight_size = torch.tensor([cm_weight_size / 2]).int().item()
+
+if args.hnet_arch == "deconv":
+   HyperNet_model = hnet_deconv(args, 1, cm_weight_size, embedding_dim=embedding_dim, hidden_channel_dim = hidden_channel_dim)
+   weight_size_hnet = HyperNet_model.print_num_weights()
+elif args.hnet_arch == "GRU":
+   HyperNet_model = HyperNetwork(args, 1, cm_weight_size)
+   weight_size_hnet = sum(p.numel() for p in HyperNet_model.parameters() if p.requires_grad)
+   print("Number of parameters for HyperNet:", weight_size_hnet)
+else:
+   raise ValueError("Unknown hnet_arch")
+
+## Set up pipeline
+hknet_pipeline = Pipeline_cm(strTime, "pipelines", "hknet")
+hknet_pipeline.setModel(HyperNet_model, KalmanNet_model)
+hknet_pipeline.setTrainingParams(args)
+## Optinal: record parameters to wandb
+if args.wandb_switch:
+   wandb.log({
+   "total_params": cm_weight_size + weight_size_hnet,
+   "batch_size": args.n_batch,
+   "learning_rate": args.lr,  
+   "weight_decay": args.wd})
+## Train Neural Networks
+hknet_pipeline.NNTrain_mixdatasets(SoW_train_range, sys_model, cv_input_list, cv_target_list, train_input_list, train_target_list, path_results,cv_init_list,train_init_list)
+
+## Test Neural Networks for each dataset  
+hknet_pipeline.NNTest_alldatasets(SoW_test_range, sys_model, test_input_list, test_target_list, path_results,test_init_list)
 
 
 

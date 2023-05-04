@@ -150,12 +150,14 @@ class KalmanNetNN(torch.nn.Module):
                 'lstm_noiseCM_out_b_ih': [d_hidden_out * 4],
                 'lstm_noiseCM_out_w_hh': [d_hidden_out * 4, d_hidden_out],
                 'lstm_noiseCM_out_b_hh': [d_hidden_out * 4],
-                'fc_noiseCM_out_w': [d_output_FC2, d_hidden_out],
-                'fc_noiseCM_out_b': [d_output_FC2]}
+                'fc_noiseCM_out_w1': [d_hidden_FC2, d_hidden_out],
+                'fc_noiseCM_out_b1': [d_hidden_FC2],
+                'fc_noiseCM_out_w2': [d_output_FC2, d_hidden_FC2],
+                'fc_noiseCM_out_b2': [d_output_FC2]}
             
             n_params_cm = d_hidden_Q*(d_input_noiseCM_q +1)*4+d_hidden_Sigma*(d_input_noiseCM_sigma +1)*4+d_hidden_S*(d_input_noiseCM_s +1)*4 +\
                         d_hidden_Q * 4 * (d_hidden_Q +1) + d_hidden_Sigma * 4 * (d_hidden_Sigma +1) + d_hidden_S * 4 * (d_hidden_S +1) +\
-                        d_hidden_out*4*(d_input_noiseCM_out+d_hidden_out+2) + d_output_FC2*(d_hidden_out+1)
+                        d_hidden_out*4*(d_input_noiseCM_out+d_hidden_out+2) + d_hidden_FC2*(d_hidden_out+1)+d_output_FC2*(d_hidden_FC2+1)
         
         ### Calculate number of parameters in KNet ###
         n_params_fc = d_output_FC1*(d_input_FC1 +1)+d_hidden_FC2*(d_input_FC2 +1)+d_output_FC2*(d_hidden_FC2 +1)+d_output_FC3*(d_input_FC3 +1)+d_output_FC4*(d_input_FC4 +1)+d_output_FC5*(d_input_FC5 +1)+d_output_FC6*(d_input_FC6 +1)+d_output_FC7*(d_input_FC7 +1)
@@ -237,10 +239,14 @@ class KalmanNetNN(torch.nn.Module):
             self._weights.append(self.lstm_noiseCM_out_w_hh)
             self.register_parameter('lstm_noiseCM_out_b_hh', nn.Parameter(torch.Tensor(d_hidden_out * 4)))
             self._weights.append(self.lstm_noiseCM_out_b_hh)
-            self.register_parameter('fc_noiseCM_out_w', nn.Parameter(torch.Tensor(d_output_FC2, d_hidden_out)))
-            self._weights.append(self.fc_noiseCM_out_w)
-            self.register_parameter('fc_noiseCM_out_b', nn.Parameter(torch.Tensor(d_output_FC2)))
-            self._weights.append(self.fc_noiseCM_out_b)
+            self.register_parameter('fc_noiseCM_out_w1', nn.Parameter(torch.Tensor(d_hidden_FC2, d_hidden_out)))
+            self._weights.append(self.fc_noiseCM_out_w1)
+            self.register_parameter('fc_noiseCM_out_b1', nn.Parameter(torch.Tensor(d_hidden_FC2)))
+            self._weights.append(self.fc_noiseCM_out_b1)
+            self.register_parameter('fc_noiseCM_out_w2', nn.Parameter(torch.Tensor(d_output_FC2, d_hidden_FC2)))
+            self._weights.append(self.fc_noiseCM_out_w2)
+            self.register_parameter('fc_noiseCM_out_b2', nn.Parameter(torch.Tensor(d_output_FC2)))
+            self._weights.append(self.fc_noiseCM_out_b2)
 
         else: 
             # Fully connected 1-7
@@ -306,7 +312,32 @@ class KalmanNetNN(torch.nn.Module):
         if self.knet_trainable == False:
             # load frozen weights if provided (else hypernet generates weights)
             if frozen_weights is not None:  
-                self.load_KNet_weights(frozen_weights)     
+                self.load_KNet_weights(frozen_weights)    
+
+            # Apply Xavier initialization to LSTM layers      
+            init.xavier_uniform_(self.lstm_noiseCM_q_w_ih.data)
+            init.xavier_uniform_(self.lstm_noiseCM_q_w_hh.data)
+            init.xavier_uniform_(self.lstm_noiseCM_sigma_w_ih.data)
+            init.xavier_uniform_(self.lstm_noiseCM_sigma_w_hh.data)
+            init.xavier_uniform_(self.lstm_noiseCM_s_w_ih.data)
+            init.xavier_uniform_(self.lstm_noiseCM_s_w_hh.data)
+            init.xavier_uniform_(self.lstm_noiseCM_out_w_ih.data)
+            init.xavier_uniform_(self.lstm_noiseCM_out_w_hh.data)
+
+            self.lstm_noiseCM_q_b_ih.data.fill_(0)
+            self.lstm_noiseCM_q_b_hh.data.fill_(0)
+            self.lstm_noiseCM_sigma_b_ih.data.fill_(0)
+            self.lstm_noiseCM_sigma_b_hh.data.fill_(0)
+            self.lstm_noiseCM_s_b_ih.data.fill_(0)
+            self.lstm_noiseCM_s_b_hh.data.fill_(0)
+            self.lstm_noiseCM_out_b_ih.data.fill_(0)
+            self.lstm_noiseCM_out_b_hh.data.fill_(0)
+
+            # Apply He initialization to FC layers
+            init.kaiming_uniform_(self.fc_noiseCM_out_w1.data, nonlinearity='relu')
+            init.kaiming_uniform_(self.fc_noiseCM_out_w2.data, nonlinearity='relu')
+            self.fc_noiseCM_out_b1.data.fill_(0)
+            self.fc_noiseCM_out_b2.data.fill_(0)
         
         else:
             # Apply Xavier initialization to LSTM layers              
@@ -545,7 +576,8 @@ class KalmanNetNN(torch.nn.Module):
             
             # CM FC 2
             in_noiseCM_FC2 = self.out_noiseCM_out
-            out_noiseCM_FC2 = F.linear(in_noiseCM_FC2, self.fc_noiseCM_out_w, bias=self.fc_noiseCM_out_b)
+            out_noiseCM_FC2 = self.activation_func(F.linear(in_noiseCM_FC2, self.fc_noiseCM_out_w1, bias=self.fc_noiseCM_out_b1))
+            out_noiseCM_FC2 = F.linear(out_noiseCM_FC2, self.fc_noiseCM_out_w2, bias=self.fc_noiseCM_out_b2)
 
             # FC 2
             in_FC2 = torch.cat((self.out_Sigma, self.out_S), 2)

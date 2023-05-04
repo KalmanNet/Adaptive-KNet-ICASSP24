@@ -12,8 +12,8 @@ This file contains the parameters for the simulations with linear canonical mode
 
 import torch
 
-m = 2 # state dimension = 2, 5, 10, etc.
-n = 2 # observation dimension = 2, 5, 10, etc.
+m = 5 # state dimension = 2, 5, 10, etc.
+n = 5 # observation dimension = 2, 5, 10, etc.
 
 ##################################
 ### Initial state and variance ###
@@ -60,5 +60,30 @@ if(m==2):
 Q_structure = torch.eye(m)
 R_structure = torch.eye(n)
 # Non-diagonal noise
-Q_structure_nonid = torch.tensor([[5, 2], [2, 5]])/torch.sqrt(torch.tensor(29))
-R_structure_nonid = torch.tensor([[3, 2], [2, 3]])/torch.sqrt(torch.tensor(13))
+def normalize(matrix):
+    frobenius_norm = torch.sqrt(torch.sum(matrix**2))
+    return matrix / frobenius_norm
+
+if m==2 and n==2:
+  Q_structure_nonid = torch.tensor([[5, 2], [2, 5]])/torch.sqrt(torch.tensor(29))
+  R_structure_nonid = torch.tensor([[3, 2], [2, 3]])/torch.sqrt(torch.tensor(13))
+elif m==5 and n==5:
+  A = torch.tensor([
+    [8.0, 2.0, 3.0, 1.0, 1.0],
+    [2.0, 6.0, 1.0, 1.0, 0.0],
+    [3.0, 1.0, 7.0, 2.0, 1.0],
+    [1.0, 1.0, 2.0, 5.0, 1.0],
+    [1.0, 0.0, 1.0, 1.0, 4.0]
+  ])
+  A = A.matmul(A.t())  # Make it symmetric positive definite
+  Q_structure_nonid = normalize(A)
+
+  B = torch.tensor([
+      [10.0, 3.0, 2.0, 1.0, 2.0],
+      [3.0, 7.0, 1.0, 0.0, 1.0],
+      [2.0, 1.0, 8.0, 2.0, 1.0],
+      [1.0, 0.0, 2.0, 6.0, 2.0],
+      [2.0, 1.0, 1.0, 2.0, 5.0]
+  ])
+  B = B.matmul(B.t())  # Make it symmetric positive definite
+  R_structure_nonid = normalize(B)

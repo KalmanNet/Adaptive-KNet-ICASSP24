@@ -200,7 +200,7 @@ args.n_batch = n_batch # will be multiplied by num of datasets
 args.lr = lr
 args.wd = wd
 ## Build Neural Networks
-print("Build HNet and KNet")
+print("Build KNet CM part")
 KalmanNet_model = KNet()
 cm_weight_size = KalmanNet_model.NNBuild(sys_model[0], args, frozen_weights=frozen_weights)
 print("Number of CM parameters:", cm_weight_size)
@@ -212,13 +212,7 @@ KalmanNet_Pipeline.setModel(KalmanNet_model)
 KalmanNet_Pipeline.setTrainingParams(args)
 KalmanNet_Pipeline.NNTrain_mixdatasets(SoW_train_range, sys_model, cv_input_list, cv_target_list, train_input_list, train_target_list, path_results,cv_init_list,train_init_list)
 ## Test Neural Network on all datasets
-for i in range(len(SoW)):
-   test_input = test_input_list[i][0]
-   test_target = test_target_list[i][0]
-   test_init = test_init_list[i][0]  
-   test_lengthMask = None 
-   print(f"Dataset {i}") 
-   KalmanNet_Pipeline.NNTest(sys_model[i], test_input_list[i][0], test_target_list[i][0], path_results)
+KalmanNet_Pipeline.NNTest_alldatasets(SoW_test_range, sys_model, test_input_list, test_target_list, path_results,test_init_list)
 
 
 ## Close wandb run
