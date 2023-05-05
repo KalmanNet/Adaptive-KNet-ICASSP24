@@ -12,7 +12,7 @@ from filters.KalmanFilter_test import KFTest
 
 from hnets.hnet import HyperNetwork
 from hnets.hnet_deconv import hnet_deconv
-from mnets.KNet_mnet import KalmanNetNN as KNet_mnet
+from mnets.KNet_mnet_allCM import KalmanNetNN as KNet_mnet
 
 from pipelines.Pipeline_cm import Pipeline_cm
 from pipelines.Pipeline_EKF import Pipeline_EKF
@@ -95,7 +95,7 @@ lr = 1e-3
 wd = 1e-3
 
 ### True model ##################################################
-# SoW (state of world) = [distribution of R, distribution of Q, r2, q2]
+# SoW (state of world)
 SoW = torch.tensor([[10,-10], [1,-10], [-10,-10],[-20,-10]])
 SoW_train_range = list(range(len(SoW))) # first *** number of datasets are used for training
 print("SoW_train_range: ", SoW_train_range)

@@ -25,20 +25,20 @@ class HyperNetwork(nn.Module):
         self.gru = nn.GRU(self.hidden_size, self.hidden_size).to(self.device)
         self.fc2 = nn.Linear(self.hidden_size, output_size).to(self.device)
 
-        # Apply Xavier initialization to GRU layer
-        for name, param in self.gru.named_parameters():
-            if 'weight_ih' in name:
-                init.xavier_uniform_(param.data)
-            elif 'weight_hh' in name:
-                init.xavier_uniform_(param.data)
-            elif 'bias' in name:
-                param.data.fill_(0)
+        # # Apply Xavier initialization to GRU layer
+        # for name, param in self.gru.named_parameters():
+        #     if 'weight_ih' in name:
+        #         init.xavier_uniform_(param.data)
+        #     elif 'weight_hh' in name:
+        #         init.xavier_uniform_(param.data)
+        #     elif 'bias' in name:
+        #         param.data.fill_(0)
 
-        # Apply He initialization to FC layers
-        init.kaiming_uniform_(self.fc1.weight, nonlinearity='relu')
-        self.fc1.bias.data.fill_(0)
-        init.kaiming_uniform_(self.fc2.weight, nonlinearity='relu')
-        self.fc2.bias.data.fill_(0)
+        # # Apply He initialization to FC layers
+        # init.kaiming_uniform_(self.fc1.weight, nonlinearity='relu')
+        # self.fc1.bias.data.fill_(0)
+        # init.kaiming_uniform_(self.fc2.weight, nonlinearity='relu')
+        # self.fc2.bias.data.fill_(0)
 
     def forward(self, SoW):
         SoW = torch.log10(SoW)
