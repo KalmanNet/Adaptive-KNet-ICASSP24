@@ -82,7 +82,7 @@ args.wd = 1e-3
 # training parameters for Hypernet
 args.hnet_arch = "GRU" # "deconv" or "GRU
 if args.hnet_arch == "GRU": # settings for GRU hnet
-   args.hnet_hidden_size_discount = 100
+   args.hnet_hidden_size_discount = 10
 elif args.hnet_arch == "deconv": # settings for deconv hnet
    # 2x2 system
    embedding_dim = 4
@@ -90,7 +90,7 @@ elif args.hnet_arch == "deconv": # settings for deconv hnet
 else:
    raise Exception("args.hnet_arch not recognized")
 n_steps = 10000
-n_batch = 100 # will be multiplied by num of datasets
+n_batch = 32 # will be multiplied by num of datasets
 lr = 1e-3
 wd = 1e-3
 
@@ -106,6 +106,10 @@ q2_dB = SoW[:, 1]
 
 r2 = 10 ** (r2_dB/10)
 q2 = 10 ** (q2_dB/10)
+
+# change SoW to q2/r2 ratio
+SoW = q2/r2
+
 for i in range(len(SoW)):
    print(f"SoW of dataset {i}: ", SoW[i])
    print(f"r2 [linear] and q2 [linear] of dataset  {i}: ", r2[i], q2[i])
@@ -126,9 +130,9 @@ for i in range(len(SoW)):
 ###################################
 ### Data Loader (Generate Data) ###
 ###################################
-print("Start Data Gen")
-for i in range(len(SoW)):
-   DataGen(args, sys_model[i], dataFolderName + dataFileName[i])
+# print("Start Data Gen")
+# for i in range(len(SoW)):
+#    DataGen(args, sys_model[i], dataFolderName + dataFileName[i])
 print("Data Load")
 train_input_list = []
 train_target_list = []
@@ -155,42 +159,42 @@ for i in range(len(SoW)):
 ##############################
 ### Evaluate Kalman Filter ###
 ##############################
-print("Evaluate Kalman Filter True")
-for i in range(len(SoW)):
-   test_input = test_input_list[i][0]
-   test_target = test_target_list[i][0]
-   test_init = test_init_list[i][0]  
-   test_lengthMask = None 
-   print(f"Dataset {i}") 
-   [MSE_KF_linear_arr, MSE_KF_linear_avg, MSE_KF_dB_avg, KF_out] = KFTest(args, sys_model[i], test_input, test_target, test_lengthMask=test_lengthMask)
+# print("Evaluate Kalman Filter True")
+# for i in range(len(SoW)):
+#    test_input = test_input_list[i][0]
+#    test_target = test_target_list[i][0]
+#    test_init = test_init_list[i][0]  
+#    test_lengthMask = None 
+#    print(f"Dataset {i}") 
+#    [MSE_KF_linear_arr, MSE_KF_linear_avg, MSE_KF_dB_avg, KF_out] = KFTest(args, sys_model[i], test_input, test_target, test_lengthMask=test_lengthMask)
 
 
 ##################################
 ### Hyper - KalmanNet Pipeline ###
 ##################################
 ### train and test KalmanNet on dataset i
-i = 0
-print(f"KalmanNet pipeline start, train on dataset {i}")
-KalmanNet_model = KNet_mnet()
-KalmanNet_model.NNBuild(sys_model[i], args)
-print("Number of trainable parameters for KalmanNet:",sum(p.numel() for p in KalmanNet_model.parameters() if p.requires_grad))
-## Train Neural Network
-KalmanNet_Pipeline = Pipeline_EKF(strTime, "KNet", "KalmanNet")
-KalmanNet_Pipeline.setssModel(sys_model[i])
-KalmanNet_Pipeline.setModel(KalmanNet_model)
-KalmanNet_Pipeline.setTrainingParams(args)
-KalmanNet_Pipeline.NNTrain(sys_model[i], cv_input_list[i][0], cv_target_list[i][0], train_input_list[i][0], train_target_list[i][0], path_results)
-for i in range(len(SoW)):
-   test_input = test_input_list[i][0]
-   test_target = test_target_list[i][0]
-   test_init = test_init_list[i][0]  
-   test_lengthMask = None 
-   print(f"Dataset {i}") 
-   KalmanNet_Pipeline.NNTest(sys_model[i], test_input_list[i][0], test_target_list[i][0], path_results)
+# i = 0
+# print(f"KalmanNet pipeline start, train on dataset {i}")
+# KalmanNet_model = KNet_mnet()
+# KalmanNet_model.NNBuild(sys_model[i], args)
+# print("Number of trainable parameters for KalmanNet:",sum(p.numel() for p in KalmanNet_model.parameters() if p.requires_grad))
+# ## Train Neural Network
+# KalmanNet_Pipeline = Pipeline_EKF(strTime, "KNet", "KalmanNet")
+# KalmanNet_Pipeline.setssModel(sys_model[i])
+# KalmanNet_Pipeline.setModel(KalmanNet_model)
+# KalmanNet_Pipeline.setTrainingParams(args)
+# KalmanNet_Pipeline.NNTrain(sys_model[i], cv_input_list[i][0], cv_target_list[i][0], train_input_list[i][0], train_target_list[i][0], path_results)
+# for i in range(len(SoW)):
+#    test_input = test_input_list[i][0]
+#    test_target = test_target_list[i][0]
+#    test_init = test_init_list[i][0]  
+#    test_lengthMask = None 
+#    print(f"Dataset {i}") 
+#    KalmanNet_Pipeline.NNTest(sys_model[i], test_input_list[i][0], test_target_list[i][0], path_results)
 
 ### frozen KNet weights, train hypernet to generate CM weights on multiple datasets
 # load frozen weights
-frozen_weights = torch.load(path_results + 'knet_best-model.pt', map_location=device) 
+frozen_weights = torch.load(path_results + 'knet_best-model_inout1_nondiag.pt', map_location=device) 
 ### frozen KNet weights, train hypernet to generate CM weights on multiple datasets
 args.knet_trainable = False # frozen KNet weights
 args.use_context_mod = True # use CM

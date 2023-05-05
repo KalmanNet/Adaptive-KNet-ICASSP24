@@ -17,7 +17,7 @@ class HyperNetwork(nn.Module):
             self.device = torch.device('cpu')
 
         input_size = 1 + SoW_len # 1 for position embedding
-        self.position_embeddings = ["0", "1"] # shift/gain
+        self.position_embeddings = [0, 1] # shift/gain
 
         self.hidden_size = int(output_size / args.hnet_hidden_size_discount)
 
@@ -41,7 +41,8 @@ class HyperNetwork(nn.Module):
         self.fc2.bias.data.fill_(0)
 
     def forward(self, SoW):
-        input_tensors = [torch.tensor([float(ch) for ch in pe] + [SoW], dtype=torch.float32) for pe in self.position_embeddings]
+        SoW = torch.log10(SoW)
+        input_tensors = [torch.tensor([pe] + [SoW], dtype=torch.float32) for pe in self.position_embeddings]
         
         # Reuse MLPs for the corresponding input tensors
         outputs = []
