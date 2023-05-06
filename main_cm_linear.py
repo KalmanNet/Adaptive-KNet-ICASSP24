@@ -84,8 +84,7 @@ args.wd = 1e-3
 args.hnet_arch = "deconv" # "deconv" or "GRU
 if args.hnet_arch == "GRU": # settings for GRU hnet
    args.hnet_hidden_size_discount = 100
-   lr = 1e-4
-   wd = 1e-3
+
 elif args.hnet_arch == "deconv": # settings for deconv hnet
    # 2x2 system
    embedding_dim = 4
@@ -95,8 +94,9 @@ elif args.hnet_arch == "deconv": # settings for deconv hnet
 else:
    raise Exception("args.hnet_arch not recognized")
 n_steps = 5000
-n_batch = 32  # will be multiplied by num of datasets
-
+n_batch_list = [32]  # will be multiplied by num of datasets
+lr = 1e-3
+wd = 1e-3
 
 ### True model ##################################################
 # SoW
@@ -106,6 +106,7 @@ SoW = torch.tensor([[10,10], [10,1], [10,0.1], [10,0.01],
                     [0.01,10], [0.01,1], [0.01,0.1], [0.01,0.01]])
 # SoW = torch.tensor([[10,0.01],[1,1],[0.01,10]]) # different q2/r2 ratios
 SoW_train_range = list(range(len(SoW))) # these datasets are used for training
+n_batch_list = n_batch_list * len(SoW_train_range)
 print("SoW_train_range: ", SoW_train_range)
 SoW_test_range = list(range(len(SoW))) # these datasets are used for testing
 # noise
@@ -205,9 +206,10 @@ frozen_weights = torch.load(path_results + 'knet_best-model.pt', map_location=de
 ### frozen KNet weights, train hypernet to generate CM weights on multiple datasets
 args.knet_trainable = False # frozen KNet weights
 args.use_context_mod = True # use CM
+args.mixed_dataset = True # use mixed dataset training
 ## training parameters for Hypernet
 args.n_steps = n_steps
-args.n_batch = n_batch # will be multiplied by num of datasets
+args.n_batch_list = n_batch_list # will be multiplied by num of datasets
 args.lr = lr
 args.wd = wd
 ## Build Neural Networks

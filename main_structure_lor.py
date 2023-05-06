@@ -73,7 +73,7 @@ args.CompositionLoss = False
 
 # training parameters for Hypernet
 n_steps = 5000
-n_batch = 32 # will be multiplied by num of datasets
+n_batch_list = [32] # will be multiplied by num of datasets
 lr = 1e-3
 wd = 1e-9
 
@@ -85,6 +85,7 @@ SoW = torch.tensor([[1,1], [1,0.1], [1,0.01], [1,0.001],
                     [0.001,1], [0.001,0.1], [0.001,0.01], [0.001,0.001]])
 # train on different q2/r2 ratios
 SoW_train_range = list(range(len(SoW))) # these datasets are used for training
+n_batch_list = n_batch_list * len(SoW_train_range)
 print("SoW_train_range: ", SoW_train_range)
 SoW_test_range = list(range(len(SoW))) # these datasets are used for testing
 # noise
@@ -197,9 +198,10 @@ frozen_weights = torch.load(path_results + 'knet_best-model_30dB_trainonall16.pt
 ### frozen KNet weights, train hypernet to generate CM weights on multiple datasets
 args.knet_trainable = False # frozen KNet weights
 args.use_context_mod = True # use CM
+args.mixed_dataset = True # use mixed dataset training
 ## training parameters for Hypernet
 args.n_steps = n_steps
-args.n_batch = n_batch # will be multiplied by num of datasets
+args.n_batch_list = n_batch_list # will be multiplied by num of datasets
 args.lr = lr
 args.wd = wd
 ## Build Neural Networks

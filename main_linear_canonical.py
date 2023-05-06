@@ -86,15 +86,16 @@ if args.wandb_switch:
    import wandb
    wandb.init(project="HKNet_Linear")
 args.n_steps = 2
-args.n_batch = 100 # will be multiplied by num of datasets
+args.n_batch_list = [100] # will be multiplied by num of datasets
 args.lr = 1e-5
 args.wd = 1e-3
 
 ### True model ##################################################
 # SoW
 SoW = torch.tensor([[0,0,1,1], [0,0,1,4], [0,0,1,7], [0,0,1,10], [0,0,1,1.5], [0,0,1,5.5], [0,0,1,9]])
-SoW_train_range = [0,1,2,3] # first *** number of datasets are used for training
-SoW_test_range = [0,1,2,3,4,5,6] # last *** number of datasets are used for testing
+SoW_train_range = [0,1,2,3] # these datasets are used for training
+args.n_batch_list = args.n_batch_list * len(SoW_train_range)
+SoW_test_range = [0,1,2,3,4,5,6] # these datasets are used for testing
 # noise
 r2 = SoW[:, 2]
 q2 = SoW[:, 3]
@@ -220,6 +221,7 @@ if args.wandb_switch:
    "learning_rate": args.lr,  
    "weight_decay": args.wd})
 ## Train Neural Networks
+args.mixed_datasets = True
 if args.randomLength:
    hknet_pipeline.NNTrain_mixdatasets(SoW_train_range, sys_model, cv_input_list, cv_target_list, train_input_list, train_target_list, path_results, cv_init_list,train_init_list,train_lengthMask=train_lengthMask_list,cv_lengthMask=cv_lengthMask_list)
 else:

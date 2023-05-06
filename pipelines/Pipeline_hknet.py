@@ -42,7 +42,12 @@ class Pipeline_hknet:
         else:
             self.device = torch.device('cpu')
         self.N_steps = args.n_steps  # Number of Training Steps
-        self.N_B = args.n_batch # Number of Samples in Batch
+        
+        if args.mixed_dataset:
+            self.N_B = args.n_batch_list # Number of Samples in Batch for each dataset
+        else:
+            self.N_B = args.n_batch # Number of Samples in Batch
+
         self.learningRate = args.lr # Learning Rate
         self.weightDecay = args.wd # L2 Weight Regularization - Weight Decay
         self.alpha = args.alpha # Composition loss factor
@@ -86,21 +91,21 @@ class Pipeline_hknet:
             # each turn, go through all datasets
             #################
             ### Training  ###
-            #################          
+            ################# 
+            self.optimizer.zero_grad()          
             # Training Mode
-            self.hnet.train()
-            self.mnet.batch_size = self.N_B       
+            self.hnet.train()      
             MSE_trainbatch_linear_LOSS = torch.zeros([len(SoW_train_range)]) # loss for each dataset
             for i in SoW_train_range: # dataset i 
-                self.optimizer.zero_grad()  
-                 # Init Training Batch tensors
-                y_training_batch = torch.zeros([self.N_B, sysmdl_n, sysmdl_T]).to(self.device)
-                train_target_batch = torch.zeros([self.N_B, sysmdl_m, sysmdl_T]).to(self.device)
-                x_out_training_batch = torch.zeros([self.N_B, sysmdl_m, sysmdl_T]).to(self.device)
+                self.mnet.batch_size = self.N_B[i] # Update Batch Size for mnet 
+                # Init Training Batch tensors
+                y_training_batch = torch.zeros([self.N_B[i], sysmdl_n, sysmdl_T]).to(self.device)
+                train_target_batch = torch.zeros([self.N_B[i], sysmdl_m, sysmdl_T]).to(self.device)
+                x_out_training_batch = torch.zeros([self.N_B[i], sysmdl_m, sysmdl_T]).to(self.device)
                 if self.args.randomLength:
-                    MSE_train_linear_LOSS = torch.zeros([self.N_B])
+                    MSE_train_linear_LOSS = torch.zeros([self.N_B[i]])
                 # Init Sequence
-                train_init_batch = torch.empty([self.N_B, sysmdl_m,1]).to(self.device)
+                train_init_batch = torch.empty([self.N_B[i], sysmdl_m,1]).to(self.device)
                 # Init Hidden State
                 if self.args.hnet_arch == "GRU":
                     self.hnet.init_hidden()
@@ -122,8 +127,8 @@ class Pipeline_hknet:
                     if sysmdl_m == 2: 
                         mask = torch.tensor([True,False])
                 # Randomly select N_B training sequences
-                assert self.N_B <= self.N_E # N_B must be smaller than N_E
-                n_e = random.sample(range(self.N_E), k=self.N_B)
+                assert self.N_B[i] <= self.N_E # N_B must be smaller than N_E
+                n_e = random.sample(range(self.N_E), k=self.N_B[i])
                 dataset_index = 0
                 for index in n_e:
                     # Training Batch

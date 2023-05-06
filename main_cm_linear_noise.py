@@ -90,7 +90,7 @@ elif args.hnet_arch == "deconv": # settings for deconv hnet
 else:
    raise Exception("args.hnet_arch not recognized")
 n_steps = 10000
-n_batch = 32 # will be multiplied by num of datasets
+n_batch_list = [8,8,8,32] # batch size for each dataset
 lr = 1e-3
 wd = 1e-3
 
@@ -198,9 +198,10 @@ frozen_weights = torch.load(path_results + 'knet_best-model_inout1_nondiag.pt', 
 ### frozen KNet weights, train hypernet to generate CM weights on multiple datasets
 args.knet_trainable = False # frozen KNet weights
 args.use_context_mod = True # use CM
+args.mixed_dataset = True # use mixed dataset training
 ## training parameters for Hypernet
 args.n_steps = n_steps
-args.n_batch = n_batch # will be multiplied by num of datasets
+args.n_batch_list = n_batch_list # will be multiplied by num of datasets
 args.lr = lr
 args.wd = wd
 ## Build Neural Networks

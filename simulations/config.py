@@ -46,10 +46,14 @@ def general_settings():
                         help='if True, use wandb')
     parser.add_argument('--use_cuda', type=bool, default=False, metavar='CUDA',
                         help='if True, use CUDA')
+    parser.add_argument('--mixed_dataset', type=bool, default=False, metavar='mixed_dataset',
+                        help='if True, use mixed dataset training')
     parser.add_argument('--n_steps', type=int, default=1000, metavar='N_steps',
                         help='number of training steps (default: 1000)')
     parser.add_argument('--n_batch', type=int, default=20, metavar='N_B',
                         help='input batch size for training (default: 20)')
+    parser.add_argument('--n_batch_list', type=list, default=[20], metavar='N_B_list',
+                        help='input batch size for mixed dataset training')
     parser.add_argument('--lr', type=float, default=1e-3, metavar='LR',
                         help='learning rate (default: 1e-3)')
     parser.add_argument('--wd', type=float, default=1e-4, metavar='WD',

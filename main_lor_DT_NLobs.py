@@ -67,7 +67,7 @@ hidden_channel_dim = 128
 args.knet_trainable = False # Hypernet generates KNet weights
 args.use_context_mod = False # Hypernet generates all KNet weights
 args.n_steps = 5000
-args.n_batch = 32
+args.n_batch_list = [32]
 args.lr = 1e-4
 args.wd = 1e-3
 args.CompositionLoss = False
@@ -81,6 +81,7 @@ SoW = torch.tensor([[1,1], [1,0.1], [1,0.01], [1,0.001],
                     [0.01,1], [0.01,0.1], [0.01,0.01], [0.01,0.001],
                     [0.001,1], [0.001,0.1], [0.001,0.01], [0.001,0.001]])
 SoW_train_range = list(range(len(SoW))) # These datasets are used for training
+args.n_batch_list = args.n_batch_list * len(SoW_train_range)
 SoW_test_range = list(range(len(SoW))) # These datasets are used for testing
 # noise
 r2 = SoW[:, 0]
@@ -189,6 +190,7 @@ if args.wandb_switch:
    "learning_rate": args.lr,  
    "weight_decay": args.wd})
 ## Train Neural Network
+args.mixed_dataset = True
 print("Composition Loss:",args.CompositionLoss)
 hknet_pipeline.NNTrain_mixdatasets(SoW_train_range, sys_model, cv_input_list, cv_target_list, train_input_list, train_target_list, path_results,cv_init_list,train_init_list)
 ## Test Neural Network
