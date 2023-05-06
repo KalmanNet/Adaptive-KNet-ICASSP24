@@ -61,7 +61,7 @@ class Pipeline_cm:
         else:
             self.device = torch.device('cpu')
         self.N_steps = args.n_steps  # Number of Training Steps
-        
+
         if args.mixed_dataset:
             self.N_B = args.n_batch_list # Number of Samples in Batch for each dataset
         else:
@@ -183,8 +183,9 @@ class Pipeline_cm:
                     MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(x_out_training_batch, train_target_batch)
                         
 
-            # averaged Loss over all datasets           
-            MSE_trainbatch_linear_LOSS_average = MSE_trainbatch_linear_LOSS.sum() / len(SoW_train_range)                         
+            # averaged Loss over all datasets
+            weights = torch.tensor(self.N_B, dtype=torch.float32) / sum(self.N_B) # weights according to batch mixture of different datasets  
+            MSE_trainbatch_linear_LOSS_average = (MSE_trainbatch_linear_LOSS * weights).mean()                        
             self.MSE_train_linear_epoch[ti] = MSE_trainbatch_linear_LOSS_average.item()
             self.MSE_train_dB_epoch[ti] = 10 * torch.log10(self.MSE_train_linear_epoch[ti])
 
