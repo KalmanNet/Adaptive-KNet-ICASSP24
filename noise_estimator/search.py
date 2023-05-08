@@ -29,31 +29,144 @@ class Pipeline_NE:
             self.device = torch.device('cuda')
         else:
             self.device = torch.device('cpu')
-        self.N_steps = args.n_steps  # Number of Training Steps
-        self.learningRate = args.lr # Learning Rate
+        self.grid_size = args.grid_size_dB
 
     def unsupervised_loss(self, SysModel, x_out_test, y_true):
-        loss_fn = torch.nn.MSELoss(reduction='mean')
         y_hat = torch.zeros_like(y_true)
         for t in range(y_true.shape[2]):
             y_hat[:,:,t] = torch.squeeze(SysModel.h(torch.unsqueeze(x_out_test[:,:,t],2)))
-        return loss_fn(y_hat, y_true)
+        # Compute MSE loss
+        loss = torch.mean((y_hat - y_true)**2)
+        return loss
+    
+    def supervised_loss(self, x_out_test, x_true):
+        # Compute MSE loss
+        loss = torch.mean((x_out_test - x_true)**2)
+        return loss
 
-    # Perform gradient-based search
-    def gradient_search(self, SysModel, test_input, path_results, test_init, lr=0.01, num_iterations=100):
-        SoW_input = torch.randn(1, requires_grad=True)
-        optimizer = torch.optim.Adam([SoW_input], lr=lr)
+    # perform grid search
+    def grid_search(self, SoW_range_dB, sys_model, test_input, path_results, test_init, test_target=None):
+        
+        if self.args.wandb_switch: 
+            import wandb
 
+        # Load model     
         hnet_model_weights = torch.load(path_results+'hnet_best-model.pt', map_location=self.device)
         self.hnet.load_state_dict(hnet_model_weights)
 
-        for i in range(num_iterations):
-            optimizer.zero_grad()
+        # Create the grid of input values
+        left, right = SoW_range_dB
+        num_steps = int((right - left) / self.grid_size) + 1
+        input_values = torch.linspace(left, right, num_steps)
 
-            output = model(test_input)
-            loss = unsupervised_loss(SysModel,output,test_input)
+        # data size
+        self.N_T = test_input.shape[0]
+        sysmdl_T_test = test_input.size()[2]
+        sysmdl_m = sys_model.m
+        # Init arrays
+        self.MSE_test_linear_arr = torch.zeros([self.N_T])
+        x_out = torch.zeros([self.N_T, sysmdl_m,sysmdl_T_test]).to(self.device)
 
-            loss.backward()
-            optimizer.step()
+        # Compute the loss for each input value
+        losses = []
+        self.mnet.UpdateSystemDynamics(sys_model)
+        self.mnet.batch_size = self.N_T
+        for input_value in input_values:            
+            # Init Hidden State
+            if self.args.hnet_arch == "GRU":
+                        self.hnet.init_hidden()
+            self.mnet.init_hidden()
+            # Init Sequence
+            self.mnet.InitSequence(test_init, sysmdl_T_test)               
+            # SoW to linear scale
+            SoW_input_linear = 10**(input_value/10)
+            weights_cm_shift, weights_cm_gain = self.hnet(SoW_input_linear)
+            for t in range(0, sysmdl_T_test):
+                x_out[:,:, t] = torch.squeeze(self.mnet(torch.unsqueeze(test_input[:,:, t],2), weights_cm_gain=weights_cm_gain, weights_cm_shift=weights_cm_shift))
+            
+            # Compute loss
+            # loss = self.unsupervised_loss(sys_model,x_out,test_input)
+            loss = self.supervised_loss(x_out, test_target)
+            # print("SoW:", input_value, "[dB]", "Unsupervised Loss:", 10 * torch.log10(loss), "[dB]")
+            print("SoW:", input_value, "[dB]", "Supervised Loss:", 10 * torch.log10(loss), "[dB]")
+            losses.append(loss.item())
+        
+        # Find the index of the input value with the minimum loss
+        min_index = torch.argmin(torch.tensor(losses))
+        # Return the input value corresponding to the minimum loss
+        optimal_SoW_dB = input_values[min_index]
+        optimal_SoW_linear = 10**(optimal_SoW_dB/10)
 
-        return input_tensor
+        # Print minimum SoW and its corresponding unsupervised loss
+        min_loss_dB = 10 * torch.log10(torch.tensor(losses[min_index]))
+        print("Optimal SoW:", optimal_SoW_dB, "[dB]", "Unsupervised Loss:", min_loss_dB, "[dB]")
+        
+        ### Optinal: record loss on wandb
+        if self.args.wandb_switch:
+            wandb.log({'Unsupervised_loss': 10 * torch.log10(losses[min_index])})
+        ###
+
+        return optimal_SoW_linear
+    
+
+    # Perform gradient-based search (gradient backpropagation has problem, need to be fixed)
+    # def gradient_search(self, SoW_range_dB, sys_model, test_input, path_results, test_init):
+        
+    #     if self.args.wandb_switch: 
+    #         import wandb
+
+    #     # Load model     
+    #     hnet_model_weights = torch.load(path_results+'hnet_best-model.pt', map_location=self.device)
+    #     self.hnet.load_state_dict(hnet_model_weights)
+
+    #     left, right = SoW_range_dB
+    #     SoW_input = torch.FloatTensor(1).uniform_(left, right).requires_grad_(True)
+
+    #     self.mnet.UpdateSystemDynamics(sys_model)
+    #     # data size
+    #     self.N_T = test_input.shape[0]
+    #     sysmdl_T_test = test_input.size()[2]
+    #     sysmdl_m = sys_model.m
+    #     # Init arrays
+    #     self.MSE_test_linear_arr = torch.zeros([self.N_T])
+    #     x_out = torch.zeros([self.N_T, sysmdl_m,sysmdl_T_test]).to(self.device)
+
+    #     for i in range(self.N_steps):
+    #         self.mnet.batch_size = self.N_T
+    #         # Init Hidden State
+    #         if self.args.hnet_arch == "GRU":
+    #                     self.hnet.init_hidden()
+    #         self.mnet.init_hidden()
+    #         # Init Sequence
+    #         self.mnet.InitSequence(test_init, sysmdl_T_test)               
+    #         print("SoW:", SoW_input, "[dB]")
+    #         # SoW to linear scale
+    #         SoW_input_linear = 10**(SoW_input/10)
+    #         weights_cm_shift, weights_cm_gain = self.hnet(SoW_input_linear)
+    #         for t in range(0, sysmdl_T_test):
+    #             x_out[:,:, t] = torch.squeeze(self.mnet(torch.unsqueeze(test_input[:,:, t],2), weights_cm_gain=weights_cm_gain, weights_cm_shift=weights_cm_shift))
+            
+    #         # Compute loss
+    #         loss = self.unsupervised_loss(sys_model,x_out,test_input)
+
+    #         loss.backward(retain_graph=True)
+    #         # Manually update the input_value with gradients and learning rate
+    #         with torch.no_grad():
+    #             SoW_input -= self.learningRate * SoW_input.grad
+
+    #             # Project the input back to the allowed range
+    #             SoW_input.clamp_(left, right)
+
+    #             # Reset the gradient of input_value for the next iteration
+    #             SoW_input.grad.zero_()
+
+    #         # Print MSE loss
+    #         MSE_test_dB_avg = 10 * torch.log10(loss)            
+    #         print("Unsupervised Loss:", MSE_test_dB_avg, "[dB]")
+
+    #         ### Optinal: record loss on wandb
+    #         if self.args.wandb_switch:
+    #             wandb.log({'Unsupervised_loss':MSE_test_dB_avg})
+    #         ###
+
+    #     return SoW_input

@@ -148,7 +148,7 @@ for i in range(len(SoW)):
 # for i in range(len(SoW)):
 #    test_input = test_input_list[i][0]
 #    test_target = test_target_list[i][0]
-#    test_init = test_init_list[i][0]
+#    test_init = test_init_list[i]
 #    print(f"Dataset {i}")
 #    [MSE_EKF_linear_arr, MSE_EKF_linear_avg, MSE_EKF_dB_avg, EKF_KG_array, EKF_out] = EKFTest(args, sys_model[i], test_input, test_target)
 

@@ -184,7 +184,7 @@ print("Evaluate Kalman Filter True")
 for i in range(len(SoW)):
    test_input = test_input_list[i][0]
    test_target = test_target_list[i][0]
-   test_init = test_init_list[i][0]
+   test_init = test_init_list[i]
    if args.randomLength:
       test_lengthMask = test_lengthMask_list[i][0]
    else:

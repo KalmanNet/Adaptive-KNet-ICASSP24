@@ -58,6 +58,8 @@ def general_settings():
                         help='learning rate (default: 1e-3)')
     parser.add_argument('--wd', type=float, default=1e-4, metavar='WD',
                         help='weight decay (default: 1e-4)')
+    parser.add_argument('--grid_size_dB', type=float, default=1, metavar='grid_size_dB',
+                        help='input grid size for grid search of SoW in dB')
     parser.add_argument('--CompositionLoss', type=bool, default=False, metavar='loss',
                         help='if True, use composition loss')
     parser.add_argument('--alpha', type=float, default=0.3, metavar='alpha',

@@ -12,8 +12,8 @@ This file contains the parameters for the simulations with linear canonical mode
 
 import torch
 
-m = 5 # state dimension = 2, 5, 10, etc.
-n = 5 # observation dimension = 2, 5, 10, etc.
+m = 2 # state dimension = 2, 5, 10, etc.
+n = 2 # observation dimension = 2, 5, 10, etc.
 
 ##################################
 ### Initial state and variance ###

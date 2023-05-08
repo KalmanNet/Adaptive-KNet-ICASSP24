@@ -163,7 +163,7 @@ for i in range(len(SoW)):
 # for i in range(len(SoW)):
 #    test_input = test_input_list[i][0]
 #    test_target = test_target_list[i][0]
-#    test_init = test_init_list[i][0]  
+#    test_init = test_init_list[i]  
 #    test_lengthMask = None 
 #    print(f"Dataset {i}") 
 #    [MSE_KF_linear_arr, MSE_KF_linear_avg, MSE_KF_dB_avg, KF_out] = KFTest(args, sys_model[i], test_input, test_target, test_lengthMask=test_lengthMask)
@@ -185,10 +185,6 @@ for i in range(len(SoW)):
 # KalmanNet_Pipeline.setTrainingParams(args)
 # KalmanNet_Pipeline.NNTrain(sys_model[i], cv_input_list[i][0], cv_target_list[i][0], train_input_list[i][0], train_target_list[i][0], path_results)
 # for i in range(len(SoW)):
-#    test_input = test_input_list[i][0]
-#    test_target = test_target_list[i][0]
-#    test_init = test_init_list[i][0]  
-#    test_lengthMask = None 
 #    print(f"Dataset {i}") 
 #    KalmanNet_Pipeline.NNTest(sys_model[i], test_input_list[i][0], test_target_list[i][0], path_results)
 
