@@ -66,6 +66,8 @@ def general_settings():
                         help='input alpha [0,1] for the composition loss')
     parser.add_argument('--RobustScaler', type=bool, default=False, metavar='RobustScaler',
                         help='if True, use Robust Scaling for the losses of different datasets')
+    parser.add_argument('--UnsupervisedLoss', type=bool, default=False, metavar='UnsupervisedLoss',
+                        help='if True, use Unsupervised Loss for training')
 
     
     ### KalmanNet settings

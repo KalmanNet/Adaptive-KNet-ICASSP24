@@ -177,10 +177,17 @@ class Pipeline_cm:
                 # weights_cm.register_hook(self.print_grad) # debug
 
                 # Compute Training Loss
-                if(MaskOnState):
-                    MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(x_out_training_batch[:,mask,:], train_target_batch[:,mask,:])
-                else: # no mask on state               
-                    MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(x_out_training_batch, train_target_batch)
+                if (self.args.UnsupervisedLoss):
+                    y_hat = torch.zeros([self.N_B[i], sys_model[i].n, sysmdl_T])
+                    for t in range(sysmdl_T):
+                        y_hat[:,:,t] = torch.squeeze(sys_model[i].h(torch.unsqueeze(x_out_training_batch[:,:,t],2)))
+                    MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(y_hat, y_training_batch)
+                
+                else:
+                    if(MaskOnState):
+                        MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(x_out_training_batch[:,mask,:], train_target_batch[:,mask,:])
+                    else: # no mask on state               
+                        MSE_trainbatch_linear_LOSS[i] = self.loss_fn_train(x_out_training_batch, train_target_batch)
                         
 
             # averaged Loss over all datasets

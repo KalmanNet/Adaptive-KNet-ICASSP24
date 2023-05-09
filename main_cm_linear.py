@@ -12,7 +12,11 @@ from filters.KalmanFilter_test import KFTest
 
 from hnets.hnet import HyperNetwork
 from hnets.hnet_deconv import hnet_deconv
-from mnets.KNet_mnet import KalmanNetNN as KNet_mnet
+
+if m==2: # 2x2 system
+   from mnets.KNet_mnet import KalmanNetNN as KNet_mnet
+else: # 5x5, 10x10 system
+   from mnets.KNet_mnet_allCM import KalmanNetNN as KNet_mnet
 
 from pipelines.Pipeline_cm import Pipeline_cm
 from pipelines.Pipeline_EKF import Pipeline_EKF
@@ -97,6 +101,8 @@ elif args.hnet_arch == "deconv": # settings for deconv hnet
 
 else:
    raise Exception("args.hnet_arch not recognized")
+
+args.UnsupervisedLoss = True # use unsupervised loss
 n_steps = 5000
 n_batch_list = [32]  # will be multiplied by num of datasets
 lr = 1e-3
@@ -126,8 +132,7 @@ SoW_dB = 10 * torch.log10(SoW)
 # Calculate the range (min, max)
 min_dB = torch.min(SoW_dB)
 max_dB = torch.max(SoW_dB)
-# SoW_range_dB = (min_dB.item(), max_dB.item())
-SoW_range_dB = (-30, 30)
+SoW_range_dB = (min_dB.item(), max_dB.item())
 print("SoW_range: ", SoW_range_dB, "[dB]")
 for i in range(len(SoW)):
    print(f"SoW of dataset {i}: ", SoW[i])
@@ -215,51 +220,51 @@ for i in range(len(SoW)):
 ### Hypernet(generate CM) Pipeline ###
 ######################################
 # load frozen weights
-# frozen_weights = torch.load(path_results + 'knet_best-model.pt', map_location=device) 
-# ### frozen KNet weights, train hypernet to generate CM weights on multiple datasets
-# args.knet_trainable = False # frozen KNet weights
-# args.use_context_mod = True # use CM
-# args.mixed_dataset = True # use mixed dataset training
-# ## training parameters for Hypernet
-# args.n_steps = n_steps
-# args.n_batch_list = n_batch_list # will be multiplied by num of datasets
-# args.lr = lr
-# args.wd = wd
-# ## Build Neural Networks
-# print("Build HNet and KNet")
-# KalmanNet_model = KNet_mnet()
-# cm_weight_size = KalmanNet_model.NNBuild(sys_model[0], args, frozen_weights=frozen_weights)
-# print("Number of CM parameters:", cm_weight_size)
+frozen_weights = torch.load(path_results + 'knet_best-model.pt', map_location=device) 
+### frozen KNet weights, train hypernet to generate CM weights on multiple datasets
+args.knet_trainable = False # frozen KNet weights
+args.use_context_mod = True # use CM
+args.mixed_dataset = True # use mixed dataset training
+## training parameters for Hypernet
+args.n_steps = n_steps
+args.n_batch_list = n_batch_list # will be multiplied by num of datasets
+args.lr = lr
+args.wd = wd
+## Build Neural Networks
+print("Build HNet and KNet")
+KalmanNet_model = KNet_mnet()
+cm_weight_size = KalmanNet_model.NNBuild(sys_model[0], args, frozen_weights=frozen_weights)
+print("Number of CM parameters:", cm_weight_size)
 
-# # Split into gain and shift
-# cm_weight_size = torch.tensor([cm_weight_size / 2]).int().item()
+# Split into gain and shift
+cm_weight_size = torch.tensor([cm_weight_size / 2]).int().item()
 
-# if args.hnet_arch == "deconv":
-#    HyperNet_model = hnet_deconv(args, 1, cm_weight_size, embedding_dim=embedding_dim, hidden_channel_dim = hidden_channel_dim)
-#    weight_size_hnet = HyperNet_model.print_num_weights()
-# elif args.hnet_arch == "GRU":
-#    HyperNet_model = HyperNetwork(args, 1, cm_weight_size)
-#    weight_size_hnet = sum(p.numel() for p in HyperNet_model.parameters() if p.requires_grad)
-#    print("Number of parameters for HyperNet:", weight_size_hnet)
-# else:
-#    raise ValueError("Unknown hnet_arch")
+if args.hnet_arch == "deconv":
+   HyperNet_model = hnet_deconv(args, 1, cm_weight_size, embedding_dim=embedding_dim, hidden_channel_dim = hidden_channel_dim)
+   weight_size_hnet = HyperNet_model.print_num_weights()
+elif args.hnet_arch == "GRU":
+   HyperNet_model = HyperNetwork(args, 1, cm_weight_size)
+   weight_size_hnet = sum(p.numel() for p in HyperNet_model.parameters() if p.requires_grad)
+   print("Number of parameters for HyperNet:", weight_size_hnet)
+else:
+   raise ValueError("Unknown hnet_arch")
 
-# ## Set up pipeline
-# hknet_pipeline = Pipeline_cm(strTime, "pipelines", "hknet")
-# hknet_pipeline.setModel(HyperNet_model, KalmanNet_model)
-# hknet_pipeline.setTrainingParams(args)
-# ## Optinal: record parameters to wandb
-# if args.wandb_switch:
-#    wandb.log({
-#    "total_params": cm_weight_size + weight_size_hnet,
-#    "batch_size(hnet)": args.n_batch,
-#    "learning_rate(hnet)": args.lr,  
-#    "weight_decay(hnet)": args.wd})
-# ## Train Neural Networks
-# # hknet_pipeline.NNTrain_mixdatasets(SoW_train_range, sys_model, cv_input_list, cv_target_list, train_input_list, train_target_list, path_results,cv_init_list,train_init_list)
+## Set up pipeline
+hknet_pipeline = Pipeline_cm(strTime, "pipelines", "hknet")
+hknet_pipeline.setModel(HyperNet_model, KalmanNet_model)
+hknet_pipeline.setTrainingParams(args)
+## Optinal: record parameters to wandb
+if args.wandb_switch:
+   wandb.log({
+   "total_params": cm_weight_size + weight_size_hnet,
+   "batch_size(hnet)": args.n_batch,
+   "learning_rate(hnet)": args.lr,  
+   "weight_decay(hnet)": args.wd})
+## Train Neural Networks
+# hknet_pipeline.NNTrain_mixdatasets(SoW_train_range, sys_model, cv_input_list, cv_target_list, train_input_list, train_target_list, path_results,cv_init_list,train_init_list)
 
-# ## Test Neural Networks for each dataset  
-# hknet_pipeline.NNTest_alldatasets(SoW_test_range, sys_model, test_input_list, test_target_list, path_results,test_init_list)
+## Test Neural Networks for each dataset  
+hknet_pipeline.NNTest_alldatasets(SoW_test_range, sys_model, test_input_list, test_target_list, path_results,test_init_list)
 
 ###########################
 ### SoW search Pipeline ###
@@ -296,8 +301,8 @@ for i in range(len(SoW)):
    test_input = test_input_list[i][0]
    test_target = test_target_list[i][0]
    test_init = test_init_list[i] 
-   print(f"Dataset {i} with optimal SoW", SoW_dB[i], "[dB]") 
-   SoW_opt = SoW_pipeline.grid_search(SoW_range_dB, sys_model[i], test_input, path_results, test_init, test_target=test_target)
+   print("Dataset {i}") 
+   SoW_opt = SoW_pipeline.grid_search(SoW_range_dB, sys_model[i], test_input, path_results, test_init, test_target=test_target, SoW_true=SoW[i])
 
 
 ## Close wandb run
