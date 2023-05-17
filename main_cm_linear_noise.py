@@ -142,9 +142,9 @@ for i in range(len(SoW)):
 ###################################
 ### Data Loader (Generate Data) ###
 ###################################
-print("Start Data Gen")
-for i in range(len(SoW)):
-   DataGen(args, sys_model[i], dataFolderName + dataFileName[i])
+# print("Start Data Gen")
+# for i in range(len(SoW)):
+#    DataGen(args, sys_model[i], dataFolderName + dataFileName[i])
 print("Data Load")
 train_input_list = []
 train_target_list = []
@@ -171,14 +171,14 @@ for i in range(len(SoW)):
 ##############################
 ### Evaluate Kalman Filter ###
 ##############################
-print("Evaluate Kalman Filter True")
-for i in range(len(SoW)):
-   test_input = test_input_list[i][0]
-   test_target = test_target_list[i][0]
-   test_init = test_init_list[i]  
-   test_lengthMask = None 
-   print(f"Dataset {i}") 
-   [MSE_KF_linear_arr, MSE_KF_linear_avg, MSE_KF_dB_avg, KF_out] = KFTest(args, sys_model[i], test_input, test_target, test_lengthMask=test_lengthMask)
+# print("Evaluate Kalman Filter True")
+# for i in range(len(SoW)):
+#    test_input = test_input_list[i][0]
+#    test_target = test_target_list[i][0]
+#    test_init = test_init_list[i]  
+#    test_lengthMask = None 
+#    print(f"Dataset {i}") 
+#    [MSE_KF_linear_arr, MSE_KF_linear_avg, MSE_KF_dB_avg, KF_out] = KFTest(args, sys_model[i], test_input, test_target, test_lengthMask=test_lengthMask)
 
 
 ##################################
@@ -195,7 +195,7 @@ KalmanNet_Pipeline = Pipeline_EKF(strTime, "KNet", "KalmanNet")
 KalmanNet_Pipeline.setssModel(sys_model[i])
 KalmanNet_Pipeline.setModel(KalmanNet_model)
 KalmanNet_Pipeline.setTrainingParams(args)
-KalmanNet_Pipeline.NNTrain(sys_model[i], cv_input_list[i][0], cv_target_list[i][0], train_input_list[i][0], train_target_list[i][0], path_results)
+# KalmanNet_Pipeline.NNTrain(sys_model[i], cv_input_list[i][0], cv_target_list[i][0], train_input_list[i][0], train_target_list[i][0], path_results)
 for i in range(len(SoW)):
    print(f"Dataset {i}") 
    KalmanNet_Pipeline.NNTest(sys_model[i], test_input_list[i][0], test_target_list[i][0], path_results)
@@ -243,7 +243,7 @@ if args.wandb_switch:
    "learning_rate": args.lr,  
    "weight_decay": args.wd})
 ## Train Neural Networks
-hknet_pipeline.NNTrain_mixdatasets(SoW_train_range, sys_model, cv_input_list, cv_target_list, train_input_list, train_target_list, path_results,cv_init_list,train_init_list)
+# hknet_pipeline.NNTrain_mixdatasets(SoW_train_range, sys_model, cv_input_list, cv_target_list, train_input_list, train_target_list, path_results,cv_init_list,train_init_list)
 
 ## Test Neural Networks for each dataset  
 hknet_pipeline.NNTest_alldatasets(SoW_test_range, sys_model, test_input_list, test_target_list, path_results,test_init_list)

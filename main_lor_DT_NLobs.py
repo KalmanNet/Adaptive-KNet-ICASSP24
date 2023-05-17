@@ -1,13 +1,16 @@
 import torch
 from datetime import datetime
 
-from filters.EKF_test import EKFTest
+from filters.EKF_test_NotBatched import EKFTest
 
 from simulations.Extended_sysmdl import SystemModel
 from simulations.utils import DataGen,Short_Traj_Split
 import simulations.config as config
+# batched model
 from simulations.lorenz_attractor.parameters import m1x_0, m2x_0, m, n,\
 f, h, h_nonlinear, Q_structure, R_structure
+# not batched model
+from simulations.lorenz_attractor.parameters import Origin_f, Origin_h, Origin_h_nonlinear
 
 from hnets.hnet import HyperNetwork
 from hnets.hnet_deconv_noPE import hnet_deconv
@@ -76,10 +79,11 @@ if args.CompositionLoss: # if True, use CompositionLoss, set args.alpha
 
 ### True model
 # SoW
-SoW = torch.tensor([[1,1], [1,0.1], [1,0.01], [1,0.001],
-                    [0.1,1], [0.1,0.1], [0.1,0.01], [0.1,0.001],
-                    [0.01,1], [0.01,0.1], [0.01,0.01], [0.01,0.001],
-                    [0.001,1], [0.001,0.1], [0.001,0.01], [0.001,0.001]])
+# SoW = torch.tensor([[1,1], [1,0.1], [1,0.01], [1,0.001],
+#                     [0.1,1], [0.1,0.1], [0.1,0.01], [0.1,0.001],
+#                     [0.01,1], [0.01,0.1], [0.01,0.01], [0.01,0.001],
+#                     [0.001,1], [0.001,0.1], [0.001,0.01], [0.001,0.001]])
+SoW = torch.tensor([[1,0.1],[0.1,0.1], [0.01,0.1], [0.001,0.1]]) # different ratios
 SoW_train_range = list(range(len(SoW))) # These datasets are used for training
 args.n_batch_list = args.n_batch_list * len(SoW_train_range)
 SoW_test_range = list(range(len(SoW))) # These datasets are used for testing
@@ -100,10 +104,15 @@ for i in range(len(SoW)):
    sys_model_i.InitSequence(m1x_0, m2x_0)# x0 and P0
    sys_model.append(sys_model_i)
 
+sys_model_originEKF = []
+for i in range(len(SoW)):
+   sys_model_originEKF_i = SystemModel(Origin_f, q2[i]*Q_structure, Origin_h_nonlinear, r2[i]*R_structure, args.T, args.T_test, m, n)# parameters for GT
+   sys_model_originEKF_i.InitSequence(m1x_0, m2x_0)# x0 and P0
+   sys_model_originEKF.append(sys_model_originEKF_i)
+
 ### paths 
 path_results = 'simulations/lorenz_attractor/results/'
-DatafolderName = 'data/lorenz_attractor/30dB/'
-# traj_resultName = ['traj_lorDT_NLobs_rq3030_T20.pt']
+DatafolderName = 'data/lorenz_attractor/fix_q/'
 dataFileName = []
 rounding_digits = 4 # round to # digits after decimal point
 for i in range(len(SoW)):
@@ -143,14 +152,14 @@ for i in range(len(SoW)):
 ########################
 ### Evaluate Filters ###
 ########################
-# ### Evaluate EKF full
-# print("Evaluate EKF full")
-# for i in range(len(SoW)):
-#    test_input = test_input_list[i][0]
-#    test_target = test_target_list[i][0]
-#    test_init = test_init_list[i]
-#    print(f"Dataset {i}")
-#    [MSE_EKF_linear_arr, MSE_EKF_linear_avg, MSE_EKF_dB_avg, EKF_KG_array, EKF_out] = EKFTest(args, sys_model[i], test_input, test_target)
+### Evaluate EKF full
+print("Evaluate EKF full")
+for i in range(len(SoW)):
+   test_input = test_input_list[i][0]
+   test_target = test_target_list[i][0]
+   test_init = test_init_list[i]
+   print(f"Dataset {i}")
+   [MSE_EKF_linear_arr, MSE_EKF_linear_avg, MSE_EKF_dB_avg, EKF_KG_array, EKF_out] = EKFTest(args, sys_model_originEKF[i], test_input, test_target)
 
 # ### Save trajectories
 # trajfolderName = 'Filters' + '/'
