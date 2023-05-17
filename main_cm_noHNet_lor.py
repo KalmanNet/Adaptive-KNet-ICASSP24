@@ -112,7 +112,7 @@ for i in range(len(SoW)):
    sys_model_originEKF.append(sys_model_originEKF_i)
 
 ### paths 
-path_results = 'simulations/lorenz_attractor/results/30dB/'
+path_results = 'simulations/lorenz_attractor/results/diff_SoW/'
 DatafolderName = 'data/lorenz_attractor/fix_q/'
 dataFileName = []
 rounding_digits = 4 # round to # digits after decimal point
@@ -179,24 +179,24 @@ for i in range(len(SoW)):
 ### CM + KalmanNet Pipeline ###
 ###############################
 ### train and test KalmanNet
-# print("KalmanNet pipeline start")
-# KalmanNet_model = KNet_mnet()
-# KalmanNet_model.NNBuild(sys_model[0], args)
-# print("Number of trainable parameters for KalmanNet:",sum(p.numel() for p in KalmanNet_model.parameters() if p.requires_grad))
-# ## Train Neural Network
-# KalmanNet_Pipeline = Pipeline_EKF(strTime, "KNet", "KalmanNet")
-# KalmanNet_Pipeline.setssModel(sys_model[0])
-# KalmanNet_Pipeline.setModel(KalmanNet_model)
-# KalmanNet_Pipeline.setTrainingParams(args)
+print("KalmanNet pipeline start")
+KalmanNet_model = KNet_mnet()
+KalmanNet_model.NNBuild(sys_model[0], args)
+print("Number of trainable parameters for KalmanNet:",sum(p.numel() for p in KalmanNet_model.parameters() if p.requires_grad))
+## Train Neural Network
+KalmanNet_Pipeline = Pipeline_EKF(strTime, "KNet", "KalmanNet")
+KalmanNet_Pipeline.setssModel(sys_model[0])
+KalmanNet_Pipeline.setModel(KalmanNet_model)
+KalmanNet_Pipeline.setTrainingParams(args)
 # KalmanNet_Pipeline.NNTrain_mixdatasets(SoW_train_range, sys_model, cv_input_list, cv_target_list, train_input_list, train_target_list, path_results,cv_init_list,train_init_list)
-# ## Test Neural Network on all datasets
-# for i in range(len(SoW)):
-#    print(f"Dataset {i}") 
-#    KalmanNet_Pipeline.NNTest(sys_model[i], test_input_list[i][0], test_target_list[i][0], path_results)
+## Test Neural Network on all datasets
+for i in range(len(SoW)):
+   print(f"Dataset {i}") 
+   KalmanNet_Pipeline.NNTest(sys_model[i], test_input_list[i][0], test_target_list[i][0], path_results)
 
 
 # load frozen weights
-frozen_weights = torch.load(path_results + 'knet_best-model_30dB_trainonall16.pt', map_location=device) 
+frozen_weights = torch.load(path_results + 'knet_best-model_base.pt', map_location=device) 
 ### frozen KNet weights, train hypernet to generate CM weights on multiple datasets
 args.knet_trainable = False # frozen KNet weights
 args.use_context_mod = True # use CM
