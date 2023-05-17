@@ -43,8 +43,45 @@ import ipdb
 # FC[0].bias = nn.Parameter(torch.ones(d_hidden_FC))
 
 ##########################################################################################
-Sow_range = [0,1,2]
-for i in Sow_range:
-    print(i)
+# Sow_range = [0,1,2]
+# for i in Sow_range:
+#     print(i)
 
-print(len(Sow_range))
+# print(len(Sow_range))
+
+##########################################################################################
+N_T = 200
+sysmdl_n = 2
+T = 500
+
+residual = torch.randn(N_T, sysmdl_n, T)
+
+# Method 1
+residual_2nd_moment = torch.zeros(sysmdl_n, sysmdl_n)
+temp_moment = torch.zeros(N_T*T,sysmdl_n, sysmdl_n)
+i = 0
+for seq in range(N_T):
+    for t in range(T):
+        temp_residual = residual[seq,:,t].unsqueeze(1)
+        temp_moment[i] = temp_residual * temp_residual.T
+        i += 1
+residual_2nd_moment = temp_moment.mean(dim=0)
+print(residual_2nd_moment)
+
+# Method 2
+# First, transpose the tensor to swap the last two dimensions
+# The new size is [self.N_T, sysmdl_T_test, sysmdl_n]
+residual_transposed = residual.transpose(1, 2)
+
+# Now, reshape the transposed tensor to a 2D tensor
+# The new size is [(self.N_T * sysmdl_T_test), sysmdl_n]
+residual_reshaped = residual_transposed.reshape(-1, sysmdl_n)
+
+# Compute the outer product of the residual vectors
+# The resulting tensor has size [(self.N_T * sysmdl_T_test), sysmdl_n, sysmdl_n]
+residual_2nd_moment = torch.einsum('bi,bj->bij', residual_reshaped, residual_reshaped)
+
+# Now, you want to calculate the mean over the first dimension (self.N_T * sysmdl_T_test)
+# The resulting tensor has size [sysmdl_n, sysmdl_n]
+residual_2nd_moment = residual_2nd_moment.mean(dim=0)
+print(residual_2nd_moment)

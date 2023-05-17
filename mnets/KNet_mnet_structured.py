@@ -367,10 +367,10 @@ class KalmanNetNN(torch.nn.Module):
         self.step_KGain_est(y)
 
         # Innovation
-        dy = y - self.m1y # [batch_size, n, 1]
+        self.dy = y - self.m1y # [batch_size, n, 1]
 
         # Compute the 1-st posterior moment
-        INOV = torch.bmm(self.KGain, dy)
+        INOV = torch.bmm(self.KGain, self.dy)
         self.m1x_posterior_previous = self.m1x_posterior
         self.m1x_posterior = self.m1x_prior + INOV
 

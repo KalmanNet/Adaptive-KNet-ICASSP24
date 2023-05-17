@@ -33,6 +33,9 @@ class Pipeline_NE:
         self.N_steps = args.n_steps
         self.lr = args.lr
         self.grid_size = args.grid_size_dB
+        self.forget_factor = args.forget_factor
+        self.max_iter = args.max_iter
+        self.SoW_conv_error = args.SoW_conv_error
 
     def unsupervised_loss(self, SysModel, x_out_test, y_true):
         y_hat = torch.zeros_like(y_true)
@@ -47,42 +50,8 @@ class Pipeline_NE:
         loss = torch.mean((x_out_test - x_true)**2)
         return loss
     
-    def train_unsupervised(self, sys_model, test_input, path_results, test_init):
-        # data size
-        self.N_T = test_input.shape[0]
-        sysmdl_n = test_input.shape[1]
-        sysmdl_m = sys_model.m
-        sysmdl_T_test = test_input.size()[2]
-        # select 1 sequence
-        self.n_t = random.sample(range(self.N_T), k=1)
-        
-        # Init Training tensors
-        y_training = torch.zeros([1, sysmdl_n, sysmdl_T_test]).to(self.device)
-        x_out_training = torch.zeros([1, sysmdl_m, sysmdl_T_test]).to(self.device)
-        train_init = torch.empty([1, sysmdl_m,1]).to(self.device)
-
-        # Training data
-        y_training = test_input[self.n_t]                              
-        # Init Sequence
-        train_init = test_init[self.n_t]
-        
-
-        self.mnet.batch_size = 1      
-        self.hnet.train() 
-
-        for ti in range(0, self.N_steps):    
-            self.optimizer.zero_grad() 
-            # Init Hidden State
-            if self.args.hnet_arch == "GRU":
-                self.hnet.init_hidden()
-            self.mnet.init_hidden()         
-            self.mnet.InitSequence(train_init, sysmdl_T_test)
-            # Forward Computation
-            weights_cm_shift, weights_cm_gain = self.hnet() # input SoW_train
-
-            for t in range(0, sysmdl_T_test):
-                x_out_training[:, :, t] = torch.squeeze(self.mnet(torch.unsqueeze(y_training[:, :, t],2), weights_cm_gain=weights_cm_gain, weights_cm_shift=weights_cm_shift))
-                
+    def exp_smoothing(self, P_old, P_new):
+        return self.forget_factor * P_old + (1 - self.forget_factor) * P_new
 
     # perform grid search
     def grid_search(self, SoW_range_dB, sys_model, test_input, path_results, test_init, test_target=None, SoW_true=None):
@@ -178,64 +147,111 @@ class Pipeline_NE:
         return optimal_SoW_linear
     
 
-    # Perform gradient-based search (gradient backpropagation has problem, need to be fixed)
-    # def gradient_search(self, SoW_range_dB, sys_model, test_input, path_results, test_init):
+    def innovation_based_estimation(self, SoW_old, Q_old, R_old, sys_model, test_input, path_results, test_init):
+        # Load model     
+        hnet_model_weights = torch.load(path_results+'hnet_best-model.pt', map_location=self.device)
+        self.hnet.load_state_dict(hnet_model_weights)
+
+        # data size
+        self.N_T = test_input.shape[0]
+        sysmdl_T_test = test_input.size()[2]
+        sysmdl_m = sys_model.m
+        sysmdl_n = test_input.size()[1]
+        self.mnet.UpdateSystemDynamics(sys_model)
+        self.mnet.batch_size = self.N_T
         
-    #     if self.args.wandb_switch: 
-    #         import wandb
+        # Init arrays
+        x_out = torch.zeros([self.N_T, sysmdl_m,sysmdl_T_test]).to(self.device)
+        KG_array = torch.zeros([sysmdl_T_test, self.N_T, sysmdl_m, sysmdl_n]).to(self.device)
+        dy_array = torch.zeros([sysmdl_T_test, self.N_T, sysmdl_n]).to(self.device)
+        HPH_T = torch.zeros([self.N_T*sysmdl_T_test,sysmdl_n, sysmdl_n]).to(self.device)
 
-    #     # Load model     
-    #     hnet_model_weights = torch.load(path_results+'hnet_best-model.pt', map_location=self.device)
-    #     self.hnet.load_state_dict(hnet_model_weights)
+        # Init Hidden State
+        if self.args.hnet_arch == "GRU":
+                    self.hnet.init_hidden()
+        self.mnet.init_hidden()
+        # Init Sequence
+        self.mnet.InitSequence(test_init, sysmdl_T_test)               
 
-    #     left, right = SoW_range_dB
-    #     SoW_input = torch.FloatTensor(1).uniform_(left, right).requires_grad_(True)
+        weights_cm_shift, weights_cm_gain = self.hnet(SoW_old)
+        for t in range(0, sysmdl_T_test):
+            x_out[:,:, t] = torch.squeeze(self.mnet(torch.unsqueeze(test_input[:,:, t],2), weights_cm_gain=weights_cm_gain, weights_cm_shift=weights_cm_shift))
+            KG_array[t] = torch.squeeze(self.mnet.KGain)  
+            dy_array[t] = torch.squeeze(self.mnet.dy)
 
-    #     self.mnet.UpdateSystemDynamics(sys_model)
-    #     # data size
-    #     self.N_T = test_input.shape[0]
-    #     sysmdl_T_test = test_input.size()[2]
-    #     sysmdl_m = sys_model.m
-    #     # Init arrays
-    #     self.MSE_test_linear_arr = torch.zeros([self.N_T])
-    #     x_out = torch.zeros([self.N_T, sysmdl_m,sysmdl_T_test]).to(self.device)
+        ### Estimate R ##################################################################
+        y_hat = torch.zeros_like(test_input)
+        for t in range(sysmdl_T_test):
+            y_hat[:,:,t] = torch.squeeze(sys_model.h(torch.unsqueeze(x_out[:,:,t],2)))
+        residual = test_input - y_hat
+        # Compute 2nd moment of residual
+        residual_transposed = residual.transpose(1, 2) #[self.N_T, sysmdl_T_test, sysmdl_n]
+        residual_reshaped = residual_transposed.reshape(-1, sysmdl_n) # [(self.N_T * sysmdl_T_test), sysmdl_n]
+        residual_2nd_moment = torch.einsum('bi,bj->bij', residual_reshaped, residual_reshaped) #[(self.N_T * sysmdl_T_test), sysmdl_n, sysmdl_n]
+        residual_2nd_moment = residual_2nd_moment.mean(dim=0)
+        # Compute HPH^T
+        i = 0
+        for seq in range(self.N_T):
+            for t in range(sysmdl_T_test):
+                KG_t_seq = KG_array[t, seq, :, :] # [m, n]
+                HPH_T[i] = torch.inverse(torch.eye(sysmdl_n) - sys_model.H @ KG_t_seq) @ sys_model.H @ KG_t_seq @ R_old
+                i += 1
+        HPH_T = HPH_T.mean(dim=0) # [n, n]
+        R_est = residual_2nd_moment + HPH_T
+        R_new = self.exp_smoothing(R_old, R_est)
+        
+        ### Estimate Q ##################################################################
+        Q_t = torch.zeros(sysmdl_T_test, sysmdl_m, sysmdl_m)
+        for t in range(sysmdl_T_test):
+            dy = dy_array[t] # [N_T, n]
+            dy_2nd_moment = torch.einsum('bi,bj->bij', dy, dy) # [N_T, n, n]
+            dy_2nd_moment = dy_2nd_moment.mean(dim=0) # [n, n]
+            KG_t = KG_array[t] # [N_T, m, n]
+            KG = KG_t.mean(dim=0) # [m, n]
+            Q_t[t] = torch.squeeze(KG @ dy_2nd_moment @ (KG.T))
 
-    #     for i in range(self.N_steps):
-    #         self.mnet.batch_size = self.N_T
-    #         # Init Hidden State
-    #         if self.args.hnet_arch == "GRU":
-    #                     self.hnet.init_hidden()
-    #         self.mnet.init_hidden()
-    #         # Init Sequence
-    #         self.mnet.InitSequence(test_init, sysmdl_T_test)               
-    #         print("SoW:", SoW_input, "[dB]")
-    #         # SoW to linear scale
-    #         SoW_input_linear = 10**(SoW_input/10)
-    #         weights_cm_shift, weights_cm_gain = self.hnet(SoW_input_linear)
-    #         for t in range(0, sysmdl_T_test):
-    #             x_out[:,:, t] = torch.squeeze(self.mnet(torch.unsqueeze(test_input[:,:, t],2), weights_cm_gain=weights_cm_gain, weights_cm_shift=weights_cm_shift))
-            
-    #         # Compute loss
-    #         loss = self.unsupervised_loss(sys_model,x_out,test_input)
+        Q_est = Q_t.mean(dim=0)
+        Q_new = self.exp_smoothing(Q_old, Q_est)
 
-    #         loss.backward(retain_graph=True)
-    #         # Manually update the input_value with gradients and learning rate
-    #         with torch.no_grad():
-    #             SoW_input -= self.learningRate * SoW_input.grad
+        return R_new, Q_new
+    
+    def estimate_scalar(self, Q, Q0):
+        # minimize ||Q - q2*Q0||_F
+        q2 = torch.trace(Q.T @ Q0) / torch.trace(Q0.T @ Q0)
+        return q2
+    
+    def update_SoW(self, SoW_range_dB, Qk, Rk, Q0, R0):
+        q2 = self.estimate_scalar(Qk, Q0)
+        print("Estimated q2:", q2)
+        r2 = self.estimate_scalar(Rk, R0)
+        print("Estimated r2:", r2)
 
-    #             # Project the input back to the allowed range
-    #             SoW_input.clamp_(left, right)
+        min_SoW, max_SoW = SoW_range_dB
+        min_SoW = 10**(min_SoW/10)
+        max_SoW = 10**(max_SoW/10)
+        SoW_new = q2 / r2
+        if SoW_new < min_SoW:
+            SoW_new = min_SoW
+        elif SoW_new > max_SoW:
+            SoW_new = max_SoW
+        return SoW_new
+    
+    # def lock_SoW(self, SoW_range_dB, SoW_old, Q0, R0, sys_model, test_input, path_results, test_init):
 
-    #             # Reset the gradient of input_value for the next iteration
-    #             SoW_input.grad.zero_()
+    #     R_new, Q_new = self.innovation_based_estimation(SoW_old,Q0,R0,Q0,R0,sys_model, test_input, path_results, test_init)
+    #     SoW_new = self.update_SoW(SoW_range_dB, Q_new, R_new, Q0, R0)
+    #     iter = 0
+    #     while abs(SoW_new - SoW_old) > self.SoW_conv_error and iter < self.max_iter:
+    #         print("SoW_old:", 10*torch.log10(SoW_old), "[dB]", "SoW_new:", 10*torch.log10(SoW_new), "[dB]")
+    #         SoW_old = SoW_new
+    #         Q_old = Q_new
+    #         R_old = R_new
+    #         R_new, Q_new = self.innovation_based_estimation(SoW_old,Q_old,R_old,Q0,R0,sys_model, test_input, path_results, test_init)
+    #         SoW_new = self.update_SoW(SoW_range_dB, Q_new, R_new, Q0, R0)
+    #         iter += 1
 
-    #         # Print MSE loss
-    #         MSE_test_dB_avg = 10 * torch.log10(loss)            
-    #         print("Unsupervised Loss:", MSE_test_dB_avg, "[dB]")
+    #     return SoW_new, R_new, Q_new
 
-    #         ### Optinal: record loss on wandb
-    #         if self.args.wandb_switch:
-    #             wandb.log({'Unsupervised_loss':MSE_test_dB_avg})
-    #         ###
+        
 
-    #     return SoW_input
+

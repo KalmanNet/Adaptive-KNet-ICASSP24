@@ -22,6 +22,7 @@ from pipelines.Pipeline_cm import Pipeline_cm
 from pipelines.Pipeline_EKF import Pipeline_EKF
 
 from noise_estimator.search import Pipeline_NE
+from noise_estimator.KF_search import KF_NE
 
 print("Pipeline Start")
 
@@ -109,7 +110,11 @@ lr = 1e-3
 wd = 1e-3
 
 # parameters for SoW search
-args.grid_size_dB = 1 # step size for grid search of SoW in dB
+args.grid_size_dB = 0.1 # step size for grid search of SoW in dB
+args.forget_factor = 0.3 # forget factor for innovation based estimation
+SoW_init = torch.tensor([1.0]) # initial SoW [linear scale]
+args.max_iter = 100 # max number of iterations for SoW search
+args.SoW_conv_error = 1e-4 # convergence error for SoW search
 
 ### True model ##################################################
 # SoW
@@ -117,7 +122,8 @@ args.grid_size_dB = 1 # step size for grid search of SoW in dB
 #                     [1,10], [1,1], [1,0.1], [1,0.01],
 #                     [0.1,10], [0.1,1], [0.1,0.1], [0.1,0.01],
 #                     [0.01,10], [0.01,1], [0.01,0.1], [0.01,0.01]])
-SoW = torch.tensor([[10,0.1],[1,0.1],[0.1,0.1],[0.01,0.1]]) # different q2/r2 ratios
+# SoW = torch.tensor([[10,0.1],[1,0.1],[0.1,0.1],[0.01,0.1]]) # different q2/r2 ratios
+SoW = torch.tensor([[5,0.1],[0.5,0.1],[0.05,0.1]]) # interpolation
 SoW_train_range = list(range(len(SoW))) # these datasets are used for training
 n_batch_list = n_batch_list * len(SoW_train_range)
 print("SoW_train_range: ", SoW_train_range)
@@ -132,7 +138,7 @@ SoW_dB = 10 * torch.log10(SoW)
 # Calculate the range (min, max)
 min_dB = torch.min(SoW_dB)
 max_dB = torch.max(SoW_dB)
-SoW_range_dB = (min_dB.item(), max_dB.item())
+SoW_range_dB = (-20, 10)
 print("SoW_range: ", SoW_range_dB, "[dB]")
 for i in range(len(SoW)):
    print(f"SoW of dataset {i}: ", SoW[i])
@@ -144,6 +150,9 @@ for i in range(len(SoW)):
    sys_model_i = SystemModel(F, q2[i]*Q_structure, H, r2[i]*R_structure, args.T, args.T_test, q2[i], r2[i])
    sys_model_i.InitSequence(m1_0, m2_0)
    sys_model.append(sys_model_i)
+
+sys_model_init = SystemModel(F, Q_structure, H, R_structure, args.T, args.T_test, 1, 1)
+sys_model_init.InitSequence(m1_0, m2_0)
 
 ### paths ##################################################
 path_results = 'simulations/linear_canonical/results/2x2/'
@@ -173,12 +182,12 @@ test_init_list = []
 
 for i in range(len(SoW)):  
    [train_input, train_target, cv_input, cv_target, test_input, test_target,train_init, cv_init, test_init] = torch.load(dataFolderName + dataFileName[i], map_location=device)
-   train_input_list.append((train_input, SoW[i]))
-   train_target_list.append((train_target, SoW[i]))
-   cv_input_list.append((cv_input, SoW[i]))
-   cv_target_list.append((cv_target, SoW[i]))
-   test_input_list.append((test_input, SoW[i]))
-   test_target_list.append((test_target, SoW[i]))
+   train_input_list.append([train_input, SoW[i]])
+   train_target_list.append([train_target, SoW[i]])
+   cv_input_list.append([cv_input, SoW[i]])
+   cv_target_list.append([cv_target, SoW[i]])
+   test_input_list.append([test_input, SoW[i]])
+   test_target_list.append([test_target, SoW[i]])
    train_init_list.append(train_init)
    cv_init_list.append(cv_init)
    test_init_list.append(test_init)
@@ -186,14 +195,37 @@ for i in range(len(SoW)):
 ##############################
 ### Evaluate Kalman Filter ###
 ##############################
-# print("Evaluate Kalman Filter True")
-# for i in range(len(SoW)):
-#    test_input = test_input_list[i][0]
-#    test_target = test_target_list[i][0]
-#    test_init = test_init_list[i] 
-#    test_lengthMask = None 
-#    print(f"Dataset {i}") 
-#    [MSE_KF_linear_arr, MSE_KF_linear_avg, MSE_KF_dB_avg, KF_out] = KFTest(args, sys_model[i], test_input, test_target, test_lengthMask=test_lengthMask)
+print("Evaluate Kalman Filter with GT noise cov")
+for i in range(len(SoW)):
+   test_input = test_input_list[i][0]
+   test_target = test_target_list[i][0]
+   test_init = test_init_list[i] 
+   print(f"Dataset {i}") 
+   [MSE_KF_linear_arr, MSE_KF_linear_avg, MSE_KF_dB_avg, KF_out] = KFTest(args, sys_model[i], test_input, test_target)
+
+#  Use innovation based method to estimate Q and R
+print("Estimate noise cov with innovation based method")
+KF_noise_est = KF_NE(strTime, "filters", "KF")
+KF_noise_est.setParams(args)
+for i in range(len(SoW)):
+   test_input = test_input_list[i][0]
+   test_target = test_target_list[i][0]
+   test_init = test_init_list[i] 
+   print(f"Dataset {i}") 
+   print("GT Q: ", sys_model[i].Q)
+   print("GT R: ", sys_model[i].R)
+   R_i, Q_i = KF_noise_est.linear_innovation_based_estimation(sys_model_init, test_input, test_init)
+   #  Use innovation based method to estimate Q and R (init with sys_model_init)
+   print("Estimated Q: ", Q_i)
+   print("Estimated R: ", R_i)
+   q2_i = KF_noise_est.estimate_scalar(Q_i, Q_structure)
+   print("Estimated q2:", q2_i)
+   r2_i = KF_noise_est.estimate_scalar(R_i, R_structure)
+   print("Estimated r2:", r2_i)
+   sys_model_feed = SystemModel(F, Q_i, H, R_i, args.T, args.T_test, q2_i, r2_i)
+   sys_model_feed.InitSequence(m1_0, m2_0)
+   [MSE_KF_linear_arr, MSE_KF_linear_avg, MSE_KF_dB_avg, KF_out] = KFTest(args, sys_model_feed, test_input, test_target)
+   
 
 
 ##########################
@@ -219,7 +251,7 @@ for i in range(len(SoW)):
 ######################################
 ### Hypernet(generate CM) Pipeline ###
 ######################################
-# load frozen weights
+### load frozen weights
 frozen_weights = torch.load(path_results + 'knet_best-model.pt', map_location=device) 
 ### frozen KNet weights, train hypernet to generate CM weights on multiple datasets
 args.knet_trainable = False # frozen KNet weights
@@ -264,7 +296,7 @@ if args.wandb_switch:
 # hknet_pipeline.NNTrain_mixdatasets(SoW_train_range, sys_model, cv_input_list, cv_target_list, train_input_list, train_target_list, path_results,cv_init_list,train_init_list)
 
 ## Test Neural Networks for each dataset  
-hknet_pipeline.NNTest_alldatasets(SoW_test_range, sys_model, test_input_list, test_target_list, path_results,test_init_list)
+# hknet_pipeline.NNTest_alldatasets(SoW_test_range, sys_model, test_input_list, test_target_list, path_results,test_init_list)
 
 ###########################
 ### SoW search Pipeline ###
@@ -297,13 +329,33 @@ if args.wandb_switch:
    wandb.log({
    "grid size SoW [dB]": args.grid_size_dB})
 
+SoW_opt = torch.zeros(len(SoW))
 for i in range(len(SoW)):
    test_input = test_input_list[i][0]
    test_target = test_target_list[i][0]
    test_init = test_init_list[i] 
-   print("Dataset {i}") 
-   SoW_opt = SoW_pipeline.grid_search(SoW_range_dB, sys_model[i], test_input, path_results, test_init, test_target=test_target, SoW_true=SoW[i])
+   print(f"Dataset {i}") 
+   # # Grid search 
+   # SoW_opt[i] = SoW_pipeline.grid_search(SoW_range_dB, sys_model[i], test_input, path_results, test_init, test_target=test_target, SoW_true=SoW[i])
+   
+   # Inn-based estimation 
+   print("GT Q: ", sys_model[i].Q)
+   print("GT R: ", sys_model[i].R)
+   print("GT SoW: ", SoW[i])
+   R_est, Q_est = SoW_pipeline.innovation_based_estimation(SoW_init, Q_structure, R_structure, sys_model[i], test_input, path_results, test_init)
+   SoW_opt[i] = SoW_pipeline.update_SoW(SoW_range_dB, Q_est, R_est, Q_structure, R_structure)
+   
+   print("Estimated Q: ", Q_est)
+   print("Estimated R: ", R_est)
+   print("Searched SoW: ", SoW_opt[i])
 
+   # Update SoW
+   test_input_list[i][1] = SoW_opt[i]
+   test_target_list[i][1] = SoW_opt[i]
+
+## Test Neural Networks for each dataset with searched SoW  
+print("Test model with searched SoW")
+hknet_pipeline.NNTest_alldatasets(SoW_test_range, sys_model, test_input_list, test_target_list, path_results,test_init_list)
 
 ## Close wandb run
 if args.wandb_switch: 

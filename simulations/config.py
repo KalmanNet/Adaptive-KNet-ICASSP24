@@ -48,6 +48,7 @@ def general_settings():
                         help='if True, use CUDA')
     parser.add_argument('--mixed_dataset', type=bool, default=False, metavar='mixed_dataset',
                         help='if True, use mixed dataset training')
+    
     parser.add_argument('--n_steps', type=int, default=1000, metavar='N_steps',
                         help='number of training steps (default: 1000)')
     parser.add_argument('--n_batch', type=int, default=20, metavar='N_B',
@@ -58,8 +59,16 @@ def general_settings():
                         help='learning rate (default: 1e-3)')
     parser.add_argument('--wd', type=float, default=1e-4, metavar='WD',
                         help='weight decay (default: 1e-4)')
+    
     parser.add_argument('--grid_size_dB', type=float, default=1, metavar='grid_size_dB',
                         help='input grid size for grid search of SoW in dB')
+    parser.add_argument('--forget_factor', type=float, default=0.3, metavar='forget_factor',
+                        help='input forget factor for noise covariance Q and R estimation')
+    parser.add_argument('--max_iter', type=int, default=100, metavar='max_iter',
+                        help='input maximum iteration for noise estimation')
+    parser.add_argument('--SoW_conv_error', type=float, default=1e-3, metavar='SoW_conv_error',
+                        help='input convergence error for SoW estimation')
+    
     parser.add_argument('--CompositionLoss', type=bool, default=False, metavar='loss',
                         help='if True, use composition loss')
     parser.add_argument('--alpha', type=float, default=0.3, metavar='alpha',

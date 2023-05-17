@@ -39,6 +39,8 @@ class KalmanFilter:
         # Predict the 2-nd moment of y
         self.m2y = torch.bmm(self.batched_H, self.m2x_prior)
         self.m2y = torch.bmm(self.m2y, self.batched_H_T) + self.R
+        
+        self.m2y_minus_R_list.append(self.m2y - self.R) # for Noise Estimation use
 
     # Compute the Kalman Gain
     def KGain(self):
@@ -46,9 +48,13 @@ class KalmanFilter:
                
         self.KG = torch.bmm(self.KG, torch.inverse(self.m2y))
 
+        #Save KalmanGain
+        self.KG_list.append(self.KG) 
+
     # Innovation
     def Innovation(self, y):
         self.dy = y - self.m1y
+        self.dy_list.append(self.dy) # for Noise Estimation use
 
     # Compute Posterior
     def Correct(self):
@@ -92,6 +98,11 @@ class KalmanFilter:
         # Allocate Array for 1st and 2nd order moments (use zero padding)
         self.x = torch.zeros(self.batch_size, self.m, T).to(self.device)
         self.sigma = torch.zeros(self.batch_size, self.m, self.m, T).to(self.device)
+
+        # Allocate list for m2y-R, KG and dy
+        self.m2y_minus_R_list = []
+        self.KG_list = []
+        self.dy_list = []
             
         # Set 1st and 2nd order moments for t=0
         self.m1x_posterior = self.m1x_0_batch.to(self.device)
