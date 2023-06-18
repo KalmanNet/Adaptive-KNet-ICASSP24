@@ -63,17 +63,19 @@ args.wandb_switch = False
 if args.wandb_switch:
    import wandb
    wandb.init(project="HKNet_Lor")
+
+args.mixed_dataset = True # use mixed dataset training
 # training parameters for KalmanNet
 args.knet_trainable = True
 # args.n_steps = 10000
-# args.n_batch = 100
+# args.n_batch_list = [32,32,32,32]
 # args.lr = 1e-3
 # args.wd = 1e-3
 # args.CompositionLoss = True
 # args.alpha = 0.5
 # training parameters for CM weights
 n_steps = 5000
-n_batch_list = [32] # will be multiplied by num of datasets
+n_batch_list = [32,32,32,32] # will be multiplied by num of datasets
 lr = 1e-3
 wd = 1e-3
 
@@ -85,7 +87,6 @@ wd = 1e-3
 #                     [0.001,1], [0.001,0.1], [0.001,0.01], [0.001,0.001]])
 SoW = torch.tensor([[1,0.1],[0.1,0.1], [0.01,0.1], [0.001,0.1]])
 SoW_train_range = list(range(len(SoW))) # these datasets are used for training
-n_batch_list = n_batch_list * len(SoW_train_range)
 print("SoW_train_range: ", SoW_train_range)
 SoW_test_range = list(range(len(SoW))) # these datasets are used for testing
 # noise
@@ -180,7 +181,7 @@ for i in range(len(SoW)):
 ###############################
 ### train and test KalmanNet
 print("KalmanNet pipeline start")
-KalmanNet_model = KNet_mnet()
+KalmanNet_model = KNet()
 KalmanNet_model.NNBuild(sys_model[0], args)
 print("Number of trainable parameters for KalmanNet:",sum(p.numel() for p in KalmanNet_model.parameters() if p.requires_grad))
 ## Train Neural Network
@@ -200,7 +201,6 @@ frozen_weights = torch.load(path_results + 'knet_best-model_base.pt', map_locati
 ### frozen KNet weights, train hypernet to generate CM weights on multiple datasets
 args.knet_trainable = False # frozen KNet weights
 args.use_context_mod = True # use CM
-args.mixed_dataset = True # use mixed dataset training
 ## training parameters for Hypernet
 args.n_steps = n_steps
 args.n_batch_list = n_batch_list # will be multiplied by num of datasets

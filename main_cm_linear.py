@@ -110,9 +110,9 @@ lr = 1e-3
 wd = 1e-3
 
 # parameters for SoW search
+shift = 10 # shift factor for R (shift between train and inference, R_inference = shift * R_train)
 args.grid_size_dB = 0.1 # step size for grid search of SoW in dB
 args.forget_factor = 0.3 # forget factor for innovation based estimation
-SoW_init = torch.tensor([1.0]) # initial SoW [linear scale]
 args.max_iter = 100 # max number of iterations for SoW search
 args.SoW_conv_error = 1e-4 # convergence error for SoW search
 
@@ -122,8 +122,8 @@ args.SoW_conv_error = 1e-4 # convergence error for SoW search
 #                     [1,10], [1,1], [1,0.1], [1,0.01],
 #                     [0.1,10], [0.1,1], [0.1,0.1], [0.1,0.01],
 #                     [0.01,10], [0.01,1], [0.01,0.1], [0.01,0.01]])
-# SoW = torch.tensor([[10,0.1],[1,0.1],[0.1,0.1],[0.01,0.1]]) # different q2/r2 ratios
-SoW = torch.tensor([[5,0.1],[0.5,0.1],[0.05,0.1]]) # interpolation
+SoW = torch.tensor([[10,0.1],[1,0.1],[0.1,0.1],[0.01,0.1]]) # different q2/r2 ratios
+# SoW = torch.tensor([[5,0.1],[0.5,0.1],[0.05,0.1]]) # interpolation
 SoW_train_range = list(range(len(SoW))) # these datasets are used for training
 n_batch_list = n_batch_list * len(SoW_train_range)
 print("SoW_train_range: ", SoW_train_range)
@@ -151,12 +151,21 @@ for i in range(len(SoW)):
    sys_model_i.InitSequence(m1_0, m2_0)
    sys_model.append(sys_model_i)
 
-sys_model_init = SystemModel(F, Q_structure, H, R_structure, args.T, args.T_test, 1, 1)
-sys_model_init.InitSequence(m1_0, m2_0)
+# sys_model_init = SystemModel(F, Q_structure, H, R_structure, args.T, args.T_test, 1, 1)
+# sys_model_init.InitSequence(m1_0, m2_0)
+
+sys_model_init = []
+SoW_init = torch.zeros(len(SoW)) # initial SoW [linear scale]
+for i in range(len(SoW)):
+   sys_model_init_i = SystemModel(F, q2[i]*Q_structure, H, shift*r2[i]*R_structure, args.T, args.T_test, q2[i], shift*r2[i])
+   sys_model_init_i.InitSequence(m1_0, m2_0)
+   sys_model_init.append(sys_model_init_i)
+   SoW_init[i] = q2[i]/r2[i]/shift # initial SoW [linear scale]
+
 
 ### paths ##################################################
 path_results = 'simulations/linear_canonical/results/2x2/'
-dataFolderName = 'data/linear_canonical/30dB' + '/'
+dataFolderName = 'data/linear_canonical/2x2/30dB' + '/'
 dataFileName = []
 rounding_digits = 4 # round to # digits after decimal point
 for i in range(len(SoW)):
@@ -214,15 +223,20 @@ for i in range(len(SoW)):
    print(f"Dataset {i}") 
    print("GT Q: ", sys_model[i].Q)
    print("GT R: ", sys_model[i].R)
-   R_i, Q_i = KF_noise_est.linear_innovation_based_estimation(sys_model_init, test_input, test_init)
-   #  Use innovation based method to estimate Q and R (init with sys_model_init)
+   ###  Use innovation based method to estimate Q and R (init with sys_model_init)
+   R_i, Q_i = KF_noise_est.linear_innovation_based_estimation(sys_model_init[i], test_input, test_init)
+   ### Use innovation based method to estimate Q and R (init with GT)
+   # R_i, Q_i = KF_noise_est.linear_innovation_based_estimation(sys_model[i], test_input, test_init) 
    print("Estimated Q: ", Q_i)
    print("Estimated R: ", R_i)
    q2_i = KF_noise_est.estimate_scalar(Q_i, Q_structure)
    print("Estimated q2:", q2_i)
    r2_i = KF_noise_est.estimate_scalar(R_i, R_structure)
    print("Estimated r2:", r2_i)
-   sys_model_feed = SystemModel(F, Q_i, H, R_i, args.T, args.T_test, q2_i, r2_i)
+   ### both q and r are time-varying
+   # sys_model_feed = SystemModel(F, Q_i, H, R_i, args.T, args.T_test, q2_i, r2_i)
+   ### fixed q
+   sys_model_feed = SystemModel(F, sys_model[i].Q, H, R_i, args.T, args.T_test, q2[i], r2_i)
    sys_model_feed.InitSequence(m1_0, m2_0)
    [MSE_KF_linear_arr, MSE_KF_linear_avg, MSE_KF_dB_avg, KF_out] = KFTest(args, sys_model_feed, test_input, test_target)
    
@@ -342,8 +356,14 @@ for i in range(len(SoW)):
    print("GT Q: ", sys_model[i].Q)
    print("GT R: ", sys_model[i].R)
    print("GT SoW: ", SoW[i])
-   R_est, Q_est = SoW_pipeline.innovation_based_estimation(SoW_init, Q_structure, R_structure, sys_model[i], test_input, path_results, test_init)
-   SoW_opt[i] = SoW_pipeline.update_SoW(SoW_range_dB, Q_est, R_est, Q_structure, R_structure)
+   ### Use innovation based method to estimate Q and R (init with sys_model_init)
+   R_est, Q_est = SoW_pipeline.innovation_based_estimation(SoW_init[i], sys_model_init[i].Q, sys_model_init[i].R, sys_model[i], test_input, path_results, test_init)
+   ### Use innovation based method to estimate Q and R (init with GT)
+   # R_est, Q_est = SoW_pipeline.innovation_based_estimation(SoW[i], sys_model[i].Q, sys_model[i].R, sys_model[i], test_input, path_results, test_init)
+   ### q and r are time-varying
+   # SoW_opt[i] = SoW_pipeline.update_SoW(SoW_range_dB, Q_est, R_est, Q_structure, R_structure)
+   ### fixed q
+   SoW_opt[i] = SoW_pipeline.update_SoW(SoW_range_dB, sys_model[i].Q, R_est, Q_structure, R_structure)
    
    print("Estimated Q: ", Q_est)
    print("Estimated R: ", R_est)

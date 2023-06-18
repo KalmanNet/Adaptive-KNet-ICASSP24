@@ -2,6 +2,7 @@
 
 Update 2023-02-06: f and h support batch size speed up
 
+Update 2023-06-16: add original f and h (not batched) 
 """
 
 
