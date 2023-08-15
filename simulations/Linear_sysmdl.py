@@ -184,7 +184,9 @@ class SystemModel:
                     exponential_dist = Exponential(lambda_exp * torch.ones([self.n])) # here we use same λ for all dimensions of yt
                     er = exponential_dist.sample((yt.size(),))
                     er = torch.reshape(er[:], yt.size())
-
+                else:
+                    raise ValueError('Unknown measurement noise distribution')
+                
                 # Additive Observation Noise
                 yt = torch.add(yt,er)
 
@@ -206,7 +208,7 @@ class SystemModel:
     ######################
     ### Generate Batch ###
     ######################
-    def GenerateBatch(self, args, size, T, randomInit=False, gaussian=True):
+    def GenerateBatch(self, args, size, T, randomInit=False):
         ### init conditions ############################
         if(randomInit):
             # Allocate Empty Array for Random Initial Conditions
@@ -345,11 +347,6 @@ class SystemModel:
                 ### Save Current to Previous ###
                 ################################
                 self.x_prev = xt
-
-        ####################
-        ### Allocate SoW ###
-        ####################
-        self.Target
 
             
 
