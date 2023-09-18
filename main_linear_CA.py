@@ -187,15 +187,15 @@ print("Compute Loss on All States (if false, loss on position only):", Loss_On_A
 ##############################
 ### Evaluate Kalman Filter ###
 ##############################
-# print("Evaluate Kalman Filter True")
-# KF_out_list = []
-# for i in range(len(SoW)):
-#    test_input = test_input_list[i][0]
-#    test_target = test_target_list[i][0]
-#    test_init = test_init_list[i] 
-#    print(f"Dataset {i}") 
-#    [MSE_KF_linear_arr, MSE_KF_linear_avg, MSE_KF_dB_avg, KF_out] = KFTest(args, sys_model[i], test_input, test_target, allStates=Loss_On_AllState)
-#    KF_out_list.append(KF_out)
+print("Evaluate Kalman Filter True")
+KF_out_list = []
+for i in range(len(SoW)):
+   test_input = test_input_list[i][0]
+   test_target = test_target_list[i][0]
+   test_init = test_init_list[i] 
+   print(f"Dataset {i}") 
+   [MSE_KF_linear_arr, MSE_KF_linear_avg, MSE_KF_dB_avg, KF_out] = KFTest(args, sys_model[i], test_input, test_target, allStates=Loss_On_AllState)
+   KF_out_list.append(KF_out)
 
 
 ##########################
