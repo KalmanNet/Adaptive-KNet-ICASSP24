@@ -5,3 +5,7 @@ In real-world applications of filtering, different systems may have different St
 This work targets at the shifts in evolution and observation noise distributions. It is based on [KalmanNet](https://arxiv.org/abs/2107.10043), and enables KalmanNet with the fast adaptation ability to shifting noise distributions during inference.
 
 Paper Link: https://arxiv.org/abs/2309.07016 (published on ICASSP 2024)
+
+![Adaptive KalmanNet architecture](images/Overall_arch_v2.pdf)
+
+![Training and inference](images/overall_arch.pdf)
