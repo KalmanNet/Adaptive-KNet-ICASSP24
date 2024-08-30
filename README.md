@@ -6,6 +6,6 @@ This work targets at the shifts in evolution and observation noise distributions
 
 Paper Link: https://arxiv.org/abs/2309.07016 (published on ICASSP 2024)
 
-![Adaptive KalmanNet architecture](images/Overall_arch_v2.pdf)
+![Adaptive KalmanNet architecture](images/Overall_arch_v2.png)
 
-![Training and inference](images/overall_arch.pdf)
+![Training and inference](images/overall_arch.png)
